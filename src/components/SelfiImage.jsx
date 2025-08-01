@@ -256,14 +256,16 @@ const SelfieImage = ({ onSuccess, onClose }) => {
             </div>
           ) : (
             // Preview & Upload
-            <div className="text-center">
-              <div className="mb-4">
-                <img
-                  src={capturedImage}
-                  alt="Captured selfie"
-                  className="w-[230px] h-[340px] object-contain rounded-lg border-2 border-gray-300"
-                />
-              </div>
+           <div className="text-center">
+  <div className="mb-4 flex justify-center">
+    <div className="relative max-w-full" style={{ width: '230px', height: '340px' }}>
+      <img
+        src={capturedImage}
+        alt="Captured selfie"
+        className="w-full h-full object-contain rounded-lg border-2 border-gray-300"
+      />
+    </div>
+  </div>
 
               {/* Upload Status */}
               {uploadStatus === 'success' && (
