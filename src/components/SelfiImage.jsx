@@ -40,8 +40,8 @@ const SelfieImage = ({ onSuccess, onClose }) => {
   const capturePhoto = useCallback(() => {
     if (webcamRef.current && isCameraReady) {
       const imageSrc = webcamRef.current.getScreenshot({
-        width: 230,
-        height: 340,
+        width: 1280,
+        height: 720,
         screenshotFormat: 'image/jpeg',
         screenshotQuality: 0.9
       });
@@ -200,7 +200,7 @@ const SelfieImage = ({ onSuccess, onClose }) => {
               ) : (
                 // Camera Interface
                 <div>
-                  <div className="relative mb-4 bg-gray-100 rounded-lg overflow-hidden mx-auto" style={{ width: '230px', height: '340px' }}>
+                  <div className="relative mb-4 bg-gray-100 rounded-lg overflow-hidden">
                     <Webcam
                       ref={webcamRef}
                       audio={false}
@@ -209,7 +209,7 @@ const SelfieImage = ({ onSuccess, onClose }) => {
                       onUserMedia={handleCameraReady}
                       onUserMediaError={handleCameraError}
                       mirrored={true}
-                      className="w-full h-full object-cover"
+                      className="w-full h-64 object-cover"
                       style={{ 
                         display: isCameraReady ? 'block' : 'none' 
                       }}
@@ -257,14 +257,12 @@ const SelfieImage = ({ onSuccess, onClose }) => {
           ) : (
             // Preview & Upload
             <div className="text-center">
-              <div className="mb-4 flex justify-center">
-                <div className="relative bg-gray-100 rounded-lg border-2 border-gray-300 overflow-hidden" style={{ width: '230px', height: '340px' }}>
-                  <img
-                    src={capturedImage}
-                    alt="Captured selfie"
-                    className="w-full h-full object-cover"
-                  />
-                </div>
+              <div className="mb-4">
+                <img
+                  src={capturedImage}
+                  alt="Captured selfie"
+                  className="w-full h-64 object-cover rounded-lg border-2 border-gray-300"
+                />
               </div>
 
               {/* Upload Status */}
