@@ -15,12 +15,13 @@ const SelfieImage = ({ onSuccess, onClose }) => {
   const BASE_URL = process.env.REACT_APP_BASE_URL;
   const { token, user, setUser } = useAuth();
 
-  // Camera configuration
+  // Camera configuration - Fixed aspect ratio
   const videoConstraints = {
     width: { ideal: 1280, min: 640 },
     height: { ideal: 720, min: 480 },
     facingMode: "user", 
-    frameRate: { ideal: 30, min: 15 }
+    frameRate: { ideal: 30, min: 15 },
+    aspectRatio: 16/9 // Ensure consistent aspect ratio
   };
 
   // Convert dataURL to blob
@@ -200,7 +201,7 @@ const SelfieImage = ({ onSuccess, onClose }) => {
               ) : (
                 // Camera Interface
                 <div>
-                  <div className="relative mb-4 bg-gray-100 rounded-lg overflow-hidden">
+                  <div className="relative mb-4 bg-gray-100 rounded-lg overflow-hidden aspect-video">
                     <Webcam
                       ref={webcamRef}
                       audio={false}
@@ -209,7 +210,7 @@ const SelfieImage = ({ onSuccess, onClose }) => {
                       onUserMedia={handleCameraReady}
                       onUserMediaError={handleCameraError}
                       mirrored={true}
-                      className="w-full h-64 object-cover"
+                      className="w-full h-full object-cover"
                       style={{ 
                         display: isCameraReady ? 'block' : 'none' 
                       }}
@@ -258,11 +259,14 @@ const SelfieImage = ({ onSuccess, onClose }) => {
             // Preview & Upload
             <div className="text-center">
               <div className="mb-4">
-                <img
-                  src={capturedImage}
-                  alt="Captured selfie"
-                  className="w-full h-64 object-cover rounded-lg border-2 border-gray-300"
-                />
+                {/* Fixed: Use aspect-video to maintain 16:9 ratio */}
+                <div className="relative bg-gray-100 rounded-lg overflow-hidden aspect-video">
+                  <img
+                    src={capturedImage}
+                    alt="Captured selfie"
+                    className="w-full h-full object-cover border-2 border-gray-300 rounded-lg"
+                  />
+                </div>
               </div>
 
               {/* Upload Status */}
