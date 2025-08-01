@@ -40,8 +40,8 @@ const SelfieImage = ({ onSuccess, onClose }) => {
   const capturePhoto = useCallback(() => {
     if (webcamRef.current && isCameraReady) {
       const imageSrc = webcamRef.current.getScreenshot({
-        width: 1280,
-        height: 720,
+        width: 230,
+        height: 340,
         screenshotFormat: 'image/jpeg',
         screenshotQuality: 0.9
       });
@@ -200,7 +200,7 @@ const SelfieImage = ({ onSuccess, onClose }) => {
               ) : (
                 // Camera Interface
                 <div>
-                  <div className="relative mb-4 bg-gray-100 rounded-lg overflow-hidden">
+                  <div className="relative mb-4 bg-gray-100 rounded-lg overflow-hidden mx-auto" style={{ width: '230px', height: '340px' }}>
                     <Webcam
                       ref={webcamRef}
                       audio={false}
@@ -209,7 +209,7 @@ const SelfieImage = ({ onSuccess, onClose }) => {
                       onUserMedia={handleCameraReady}
                       onUserMediaError={handleCameraError}
                       mirrored={true}
-                      className="w-[230px] h-[340px] object-contain"
+                      className="w-full h-full object-cover"
                       style={{ 
                         display: isCameraReady ? 'block' : 'none' 
                       }}
@@ -256,16 +256,16 @@ const SelfieImage = ({ onSuccess, onClose }) => {
             </div>
           ) : (
             // Preview & Upload
-           <div className="text-center">
-  <div className="mb-4 flex justify-center">
-    <div className="relative max-w-full" style={{ width: '230px', height: '340px' }}>
-      <img
-        src={capturedImage}
-        alt="Captured selfie"
-        className="w-[230px] h-[340px] object-cover rounded-lg border-2 border-gray-300"
-      />
-    </div>
-  </div>
+            <div className="text-center">
+              <div className="mb-4 flex justify-center">
+                <div className="relative bg-gray-100 rounded-lg border-2 border-gray-300 overflow-hidden" style={{ width: '230px', height: '340px' }}>
+                  <img
+                    src={capturedImage}
+                    alt="Captured selfie"
+                    className="w-full h-full object-cover"
+                  />
+                </div>
+              </div>
 
               {/* Upload Status */}
               {uploadStatus === 'success' && (
