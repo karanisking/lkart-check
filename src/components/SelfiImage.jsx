@@ -1,4 +1,4 @@
-import React, { useState, useRef, useCallback } from 'react';
+import React, { useState, useRef, useCallback, useEffect } from 'react';
 import Webcam from 'react-webcam';
 import { useAuth } from '../context/auth-context';
 
@@ -11,16 +11,38 @@ const SelfieImage = ({ onSuccess, onClose }) => {
   const [isModalOpen, setIsModalOpen] = useState(true);
   const [cameraError, setCameraError] = useState(null);
   const [isCameraReady, setIsCameraReady] = useState(false);
+  const [windowSize, setWindowSize] = useState({
+    width: window.innerWidth,
+    height: window.innerHeight
+  });
 
   const BASE_URL = process.env.REACT_APP_BASE_URL;
   const { token, user, setUser } = useAuth();
 
-  // Camera configuration
-  const videoConstraints = {
-    width: { ideal: 1280, min: 640 },
-    height: { ideal: 720, min: 480 },
-    facingMode: "user", 
-    frameRate: { ideal: 30, min: 15 }
+  // Handle window resize
+  useEffect(() => {
+    const handleResize = () => {
+      setWindowSize({
+        width: window.innerWidth,
+        height: window.innerHeight
+      });
+    };
+
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
+
+  // Dynamic camera constraints based on device
+  const getVideoConstraints = () => {
+    const isMobile = windowSize.width <= 768;
+    
+    return {
+      width: { ideal: isMobile ? 640 : 1280 },
+      height: { ideal: isMobile ? 480 : 720 },
+      facingMode: "user",
+      frameRate: { ideal: 30, min: 15 },
+      aspectRatio: isMobile ? 4/3 : 16/9
+    };
   };
 
   // Convert dataURL to blob
@@ -36,14 +58,17 @@ const SelfieImage = ({ onSuccess, onClose }) => {
     return new Blob([u8arr], { type: mime });
   };
 
-  // Capture photo
+  // Capture photo with device-appropriate settings
   const capturePhoto = useCallback(() => {
     if (webcamRef.current && isCameraReady) {
+      const isMobile = windowSize.width <= 768;
+      const quality = isMobile ? 0.85 : 0.9; // Slightly lower quality on mobile for performance
+      
       const imageSrc = webcamRef.current.getScreenshot({
-        width: 1280,
-        height: 720,
+        width: isMobile ? 640 : 1280,
+        height: isMobile ? 480 : 720,
         screenshotFormat: 'image/jpeg',
-        screenshotQuality: 0.9
+        screenshotQuality: quality
       });
       
       if (imageSrc) {
@@ -52,7 +77,7 @@ const SelfieImage = ({ onSuccess, onClose }) => {
         setCapturedBlob(blob);
       }
     }
-  }, [isCameraReady]);
+  }, [isCameraReady, windowSize.width]);
 
   // Retake photo
   const retakePhoto = () => {
@@ -205,7 +230,7 @@ const SelfieImage = ({ onSuccess, onClose }) => {
                       ref={webcamRef}
                       audio={false}
                       screenshotFormat="image/jpeg"
-                      videoConstraints={videoConstraints}
+                      videoConstraints={getVideoConstraints()}
                       onUserMedia={handleCameraReady}
                       onUserMediaError={handleCameraError}
                       mirrored={true}
