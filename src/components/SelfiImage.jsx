@@ -262,7 +262,7 @@ const SelfieImage = ({ onSuccess, onClose }) => {
       <img
         src={capturedImage}
         alt="Captured selfie"
-        className="w-[230px] h-[340px] object-contain rounded-lg border-2 border-gray-300"
+        className="w-[230px] h-[340px] object-cover rounded-lg border-2 border-gray-300"
       />
     </div>
   </div>
