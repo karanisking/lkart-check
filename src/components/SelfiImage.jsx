@@ -200,7 +200,13 @@ const SelfieImage = ({ onSuccess, onClose }) => {
               ) : (
                 // Camera Interface
                 <div>
-                  <div className="relative mb-4 bg-gray-100 rounded-lg overflow-hidden mx-auto aspect-[9/16] max-h-[70vh]">
+                <div className="relative mb-4 bg-gray-100 rounded-lg overflow-hidden mx-auto" 
+                       style={{
+                         width: '100%',
+                         height: '54vh',
+                         maxHeight: '480px',
+                         minHeight: '300px'
+                       }}>
                     <Webcam
                       ref={webcamRef}
                       audio={false}
@@ -258,7 +264,7 @@ const SelfieImage = ({ onSuccess, onClose }) => {
             // Preview & Upload
             <div className="text-center">
               <div className="mb-4 flex justify-center">
-                <div className="relative bg-gray-100 rounded-lg border-2 border-gray-300 overflow-hidden aspect-[9/16] max-h-[70vh] w-full">
+                <div className="relative bg-gray-100 rounded-lg border-2 border-gray-300 overflow-hidden aspect-[9/16] max-h-[54vh] w-full">
                   <img
                     src={capturedImage}
                     alt="Captured selfie"
