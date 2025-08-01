@@ -15,12 +15,12 @@ const SelfieImage = ({ onSuccess, onClose }) => {
   const BASE_URL = process.env.REACT_APP_BASE_URL;
   const { token, user, setUser } = useAuth();
 
-  // Responsive camera configuration
+  // Camera configuration
   const videoConstraints = {
-    width: { ideal: 1280 },
-    height: { ideal: 720 },
-    facingMode: "user",
-    aspectRatio: 16/9
+    width: { ideal: 1280, min: 640 },
+    height: { ideal: 720, min: 480 },
+    facingMode: "user", 
+    frameRate: { ideal: 30, min: 15 }
   };
 
   // Convert dataURL to blob
@@ -36,12 +36,12 @@ const SelfieImage = ({ onSuccess, onClose }) => {
     return new Blob([u8arr], { type: mime });
   };
 
-  // Capture photo - maintain high quality but with proper aspect ratio
+  // Capture photo
   const capturePhoto = useCallback(() => {
     if (webcamRef.current && isCameraReady) {
       const imageSrc = webcamRef.current.getScreenshot({
-        width: 1280,
-        height: 720,
+        width: 230,
+        height: 340,
         screenshotFormat: 'image/jpeg',
         screenshotQuality: 0.9
       });
@@ -200,13 +200,7 @@ const SelfieImage = ({ onSuccess, onClose }) => {
               ) : (
                 // Camera Interface
                 <div>
-                <div className="relative mb-4 bg-gray-100 rounded-lg overflow-hidden mx-auto" 
-                       style={{
-                         width: '100%',
-                         height: '54vh',
-                         maxHeight: '480px',
-                         minHeight: '300px'
-                       }}>
+                  <div className="relative mb-4 bg-gray-100 rounded-lg overflow-hidden mx-auto" style={{ width: '230px', height: '340px' }}>
                     <Webcam
                       ref={webcamRef}
                       audio={false}
@@ -264,7 +258,7 @@ const SelfieImage = ({ onSuccess, onClose }) => {
             // Preview & Upload
             <div className="text-center">
               <div className="mb-4 flex justify-center">
-                <div className="relative bg-gray-100 rounded-lg border-2 border-gray-300 overflow-hidden aspect-[9/16] max-h-[54vh] w-full">
+                <div className="relative bg-gray-100 rounded-lg border-2 border-gray-300 overflow-hidden" style={{ width: '230px', height: '340px' }}>
                   <img
                     src={capturedImage}
                     alt="Captured selfie"
