@@ -360,7 +360,7 @@ const JobDetailsView = ({ jobDetails, selectedSlot }) => {
                   <span>View Attendance</span>
                 </button>
 
-                {/* {(user?.aadharVerified || user?.dob) && user?.profilePhotoUrl && (
+                {(user?.aadharVerified || user?.dob) && user?.profilePhotoUrl && (
                   <button
                     onClick={() => setShowViewSelfieModal(true)}
                     className="w-full py-3 px-4 border border-transparent rounded-md shadow-sm text-white bg-indigo-600 hover:bg-indigo-700 flex items-center justify-center space-x-2"
@@ -368,7 +368,7 @@ const JobDetailsView = ({ jobDetails, selectedSlot }) => {
                     <Camera className="h-5 w-5" />
                     <span>View/Reupload Selfie</span>
                   </button>
-                )} */}
+                )}
                 {accountExist && (
                   <button
                     onClick={goToPaymentHistoryPage}
