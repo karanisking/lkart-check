@@ -41,7 +41,7 @@ const SelfieImage = ({ onSuccess, onClose }) => {
       height: { ideal: isMobile ? windowSize.height : 720 },
       facingMode: "user",
       frameRate: { ideal: 30, min: 15 },
-      aspectRatio: isMobile ? windowSize.width / windowSize.height : 16/9
+      aspectRatio: 16/9
     };
   };
 
