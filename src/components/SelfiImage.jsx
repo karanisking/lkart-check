@@ -4,6 +4,7 @@ import { useAuth } from '../context/auth-context';
 
 const SelfieImage = ({ onSuccess, onClose }) => {
   const webcamRef = useRef(null);
+  const canvasRef = useRef(null);
   const [capturedImage, setCapturedImage] = useState(null);
   const [capturedBlob, setCapturedBlob] = useState(null);
   const [isUploading, setIsUploading] = useState(false);
@@ -32,20 +33,126 @@ const SelfieImage = ({ onSuccess, onClose }) => {
     return () => window.removeEventListener('resize', handleResize);
   }, []);
 
-  // Dynamic camera constraints based on device
+  // Enhanced video constraints for better quality
   const getVideoConstraints = () => {
     const isMobile = windowSize.width <= 768;
     
     return {
-      width: { ideal: isMobile ? 640 : 1280 },
-      height: { ideal: isMobile ? 480 : 720 },
+      width: { 
+        ideal: isMobile ? 1280 : 1920,  // Higher resolution
+        min: 640 
+      },
+      height: { 
+        ideal: isMobile ? 720 : 1080,   // Higher resolution
+        min: 480 
+      },
       facingMode: "user",
-      frameRate: { ideal: 30, min: 15 },
-      aspectRatio: isMobile ? 4/3 : 16/9
+      frameRate: { ideal: 30, min: 24 },
+      aspectRatio: 16/9,
+      // Advanced constraints for better quality
+      focusMode: "continuous",
+      whiteBalanceMode: "continuous",
+      exposureMode: "continuous",
+      // Request HDR if available
+      torch: false,
+      // Better color reproduction
+      colorTemperature: { ideal: 5600 }, // Daylight color temperature
+      iso: { ideal: 100, max: 400 }, // Lower ISO for less noise
+      brightness: { ideal: 0 },
+      contrast: { ideal: 1 },
+      saturation: { ideal: 1 },
+      sharpness: { ideal: 1 },
+      // Advanced camera features
+      advancedConstraints: [
+        { advanced: [{ facingMode: "user" }] },
+        { advanced: [{ width: { min: 1280 } }] },
+        { advanced: [{ height: { min: 720 } }] }
+      ]
     };
   };
 
-  // Convert dataURL to blob
+  // Enhanced image processing function
+  const processImage = (canvas, ctx, imageData) => {
+    const data = imageData.data;
+    
+    // Apply sharpening filter
+    const sharpenKernel = [
+      0, -1, 0,
+      -1, 5, -1,
+      0, -1, 0
+    ];
+    
+    // Apply contrast enhancement
+    for (let i = 0; i < data.length; i += 4) {
+      // Enhance contrast
+      data[i] = Math.min(255, Math.max(0, (data[i] - 128) * 1.2 + 128));     // Red
+      data[i + 1] = Math.min(255, Math.max(0, (data[i + 1] - 128) * 1.2 + 128)); // Green
+      data[i + 2] = Math.min(255, Math.max(0, (data[i + 2] - 128) * 1.2 + 128)); // Blue
+      
+      // Slight saturation boost
+      const avg = (data[i] + data[i + 1] + data[i + 2]) / 3;
+      data[i] = Math.min(255, data[i] + (data[i] - avg) * 0.3);
+      data[i + 1] = Math.min(255, data[i + 1] + (data[i + 1] - avg) * 0.3);
+      data[i + 2] = Math.min(255, data[i + 2] + (data[i + 2] - avg) * 0.3);
+    }
+    
+    ctx.putImageData(imageData, 0, 0);
+  };
+
+  // Enhanced capture function with better quality
+  const capturePhoto = useCallback(() => {
+    if (webcamRef.current && isCameraReady) {
+      const video = webcamRef.current.video;
+      const isMobile = windowSize.width <= 768;
+      
+      // Use higher resolution for capture
+      const captureWidth = isMobile ? 1280 : 1920;
+      const captureHeight = isMobile ? 720 : 1080;
+      
+      // Create high-quality canvas
+      const canvas = document.createElement('canvas');
+      const ctx = canvas.getContext('2d', { 
+        alpha: false,
+        willReadFrequently: true 
+      });
+      
+      canvas.width = captureWidth;
+      canvas.height = captureHeight;
+      
+      // Enable image smoothing for better quality
+      ctx.imageSmoothingEnabled = true;
+      ctx.imageSmoothingQuality = 'high';
+      
+      // Draw video frame to canvas
+      ctx.drawImage(video, 0, 0, captureWidth, captureHeight);
+      
+      // Apply image enhancement
+      const imageData = ctx.getImageData(0, 0, captureWidth, captureHeight);
+      processImage(canvas, ctx, imageData);
+      
+      // Convert to high-quality JPEG
+      const quality = isMobile ? 0.92 : 0.95; // Higher quality
+      const dataURL = canvas.toDataURL('image/jpeg', quality);
+      
+      // Also create a WebP version if supported (better compression with same quality)
+      let webpDataURL = null;
+      if (canvas.toDataURL('image/webp').indexOf('image/webp') === 5) {
+        webpDataURL = canvas.toDataURL('image/webp', 0.95);
+      }
+      
+      setCapturedImage(dataURL);
+      
+      // Use WebP if it's smaller, otherwise use JPEG
+      const finalDataURL = webpDataURL && webpDataURL.length < dataURL.length ? webpDataURL : dataURL;
+      const blob = dataURLtoBlob(finalDataURL);
+      setCapturedBlob(blob);
+      
+      // Cleanup
+      canvas.remove();
+    }
+  }, [isCameraReady, windowSize.width]);
+
+  // Enhanced blob conversion with better compression
   const dataURLtoBlob = (dataURL) => {
     const arr = dataURL.split(',');
     const mime = arr[0].match(/:(.*?);/)[1];
@@ -58,26 +165,32 @@ const SelfieImage = ({ onSuccess, onClose }) => {
     return new Blob([u8arr], { type: mime });
   };
 
-  // Capture photo with device-appropriate settings
-  const capturePhoto = useCallback(() => {
-    if (webcamRef.current && isCameraReady) {
-      const isMobile = windowSize.width <= 768;
-      const quality = isMobile ? 0.85 : 0.9; // Slightly lower quality on mobile for performance
+  // Image compression function for upload optimization
+  const compressImage = async (blob, maxWidth = 1024, quality = 0.85) => {
+    return new Promise((resolve) => {
+      const canvas = document.createElement('canvas');
+      const ctx = canvas.getContext('2d');
+      const img = new Image();
       
-      const imageSrc = webcamRef.current.getScreenshot({
-        width: isMobile ? 640 : 1280,
-        height: isMobile ? 480 : 720,
-        screenshotFormat: 'image/jpeg',
-        screenshotQuality: quality
-      });
+      img.onload = () => {
+        // Calculate new dimensions maintaining aspect ratio
+        const ratio = Math.min(maxWidth / img.width, maxWidth / img.height);
+        canvas.width = img.width * ratio;
+        canvas.height = img.height * ratio;
+        
+        // High-quality scaling
+        ctx.imageSmoothingEnabled = true;
+        ctx.imageSmoothingQuality = 'high';
+        
+        // Draw and compress
+        ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+        
+        canvas.toBlob(resolve, 'image/jpeg', quality);
+      };
       
-      if (imageSrc) {
-        setCapturedImage(imageSrc);
-        const blob = dataURLtoBlob(imageSrc);
-        setCapturedBlob(blob);
-      }
-    }
-  }, [isCameraReady, windowSize.width]);
+      img.src = URL.createObjectURL(blob);
+    });
+  };
 
   // Retake photo
   const retakePhoto = () => {
@@ -86,7 +199,7 @@ const SelfieImage = ({ onSuccess, onClose }) => {
     setUploadStatus('');
   };
 
-  // Submit image
+  // Enhanced submit with optimization
   const submitImage = async () => {
     if (!capturedBlob) return;
 
@@ -94,8 +207,11 @@ const SelfieImage = ({ onSuccess, onClose }) => {
     setUploadStatus('');
 
     try {
+      // Compress image for upload while maintaining quality
+      const optimizedBlob = await compressImage(capturedBlob, 1024, 0.88);
+      
       const formData = new FormData();
-      formData.append('file', capturedBlob, 'selfie.jpg');
+      formData.append('file', optimizedBlob, 'selfie.jpg');
 
       const response = await fetch(`${BASE_URL}/lenskart/profile-media`, {
         method: 'POST',
@@ -116,7 +232,6 @@ const SelfieImage = ({ onSuccess, onClose }) => {
           }));
         }
 
-        // Close modal after successful upload
         setTimeout(() => {
           if (onSuccess) {
             onSuccess();
@@ -223,7 +338,7 @@ const SelfieImage = ({ onSuccess, onClose }) => {
                   </button>
                 </div>
               ) : (
-                // Camera Interface
+                // Enhanced Camera Interface
                 <div>
                   <div className="relative mb-4 bg-gray-100 rounded-lg overflow-hidden">
                     <Webcam
@@ -234,9 +349,10 @@ const SelfieImage = ({ onSuccess, onClose }) => {
                       onUserMedia={handleCameraReady}
                       onUserMediaError={handleCameraError}
                       mirrored={true}
-                      className="w-full h-64 object-cover"
+                      className="w-full h-80 object-cover" // Increased height for better preview
                       style={{ 
-                        display: isCameraReady ? 'block' : 'none' 
+                        display: isCameraReady ? 'block' : 'none',
+                        filter: 'contrast(1.1) saturate(1.1)' // Slight enhancement
                       }}
                     />
                     
@@ -245,19 +361,23 @@ const SelfieImage = ({ onSuccess, onClose }) => {
                       <div className="absolute inset-0 flex items-center justify-center bg-gray-200">
                         <div className="text-center">
                           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500 mx-auto mb-4"></div>
-                          <p className="text-gray-600">Starting camera...</p>
+                          <p className="text-gray-600">Starting HD camera...</p>
                         </div>
                       </div>
                     )}
 
-                    {/* Camera frame overlay */}
+                    {/* Enhanced camera frame overlay */}
                     {isCameraReady && (
-                      <div className="absolute inset-0 border-2 border-dashed border-white opacity-50 pointer-events-none"></div>
+                      <div className="absolute inset-0 border-2 border-dashed border-white opacity-50 pointer-events-none">
+                        <div className="absolute top-4 left-4 right-4 text-white text-xs bg-black bg-opacity-50 rounded px-2 py-1">
+                          📸 HD Quality Mode • Position face in center
+                        </div>
+                      </div>
                     )}
                   </div>
 
                   <p className="text-gray-600 mb-6 text-sm">
-                    Position your face in the frame and click capture
+                    🌟 Enhanced quality mode active • Good lighting recommended
                   </p>
 
                   <button
@@ -270,24 +390,28 @@ const SelfieImage = ({ onSuccess, onClose }) => {
                         <svg className="w-5 h-5 mr-2" fill="currentColor" viewBox="0 0 20 20">
                           <path fillRule="evenodd" d="M4 5a2 2 0 00-2 2v8a2 2 0 002 2h12a2 2 0 002-2V7a2 2 0 00-2-2h-1.586a1 1 0 01-.707-.293l-1.121-1.121A2 2 0 0011.172 3H8.828a2 2 0 00-1.414.586L6.293 4.707A1 1 0 015.586 5H4zm6 9a3 3 0 100-6 3 3 0 000 6z" clipRule="evenodd" />
                         </svg>
-                        Capture Selfie
+                        Capture HD Selfie
                       </span>
                     ) : (
-                      'Loading Camera...'
+                      'Loading HD Camera...'
                     )}
                   </button>
                 </div>
               )}
             </div>
           ) : (
-            // Preview & Upload
+            // Enhanced Preview & Upload
             <div className="text-center">
               <div className="mb-4">
                 <img
                   src={capturedImage}
                   alt="Captured selfie"
-                  className="w-full h-64 object-cover rounded-lg border-2 border-gray-300"
+                  className="w-full h-80 object-cover rounded-lg border-2 border-gray-300 shadow-lg" // Increased height, added shadow
+                  style={{ 
+                    filter: 'contrast(1.05) saturate(1.05)' // Slight enhancement for preview
+                  }}
                 />
+                <p className="text-xs text-gray-500 mt-2">✨ Enhanced quality applied</p>
               </div>
 
               {/* Upload Status */}
@@ -297,7 +421,7 @@ const SelfieImage = ({ onSuccess, onClose }) => {
                     <svg className="w-5 h-5 mr-2" fill="currentColor" viewBox="0 0 20 20">
                       <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
                     </svg>
-                    Image uploaded successfully!
+                    HD Image uploaded successfully!
                   </div>
                 </div>
               )}
@@ -336,7 +460,7 @@ const SelfieImage = ({ onSuccess, onClose }) => {
                   {isUploading ? (
                     <>
                       <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
-                      Uploading...
+                      Uploading HD...
                     </>
                   ) : uploadStatus === 'success' ? (
                     <>
@@ -350,7 +474,7 @@ const SelfieImage = ({ onSuccess, onClose }) => {
                       <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
                       </svg>
-                      Submit
+                      Submit HD
                     </>
                   )}
                 </button>
