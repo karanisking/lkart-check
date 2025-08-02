@@ -236,7 +236,7 @@ const SelfieImage = ({ onSuccess, onClose }) => {
                       onUserMedia={handleCameraReady}
                       onUserMediaError={handleCameraError}
                       mirrored={true} // This only affects display, not the captured image
-                      className="w-full h-auto max-h-[60vh] object-contain"
+                      className="w-full h-auto max-h-[54vh] object-contain"
                       style={{ 
                         display: isCameraReady ? 'block' : 'none',
                         transform: 'scaleX(-1)' // Mirror effect
@@ -289,8 +289,8 @@ const SelfieImage = ({ onSuccess, onClose }) => {
                 <img
                   src={capturedImage}
                   alt="Captured selfie"
-                  className="w-full h-auto max-h-[60vh] object-contain mx-auto rounded-lg border-2 border-gray-300"
-                  style={{ transform: 'scaleX(-1)' }} // Mirror the preview to match camera view
+                  className="w-full h-auto max-h-[54vh] object-contain mx-auto rounded-lg border-2 border-gray-300"
+        
                 />
               </div>
 
