@@ -468,7 +468,7 @@ const JobDetailsView = ({ jobDetails, selectedSlot }) => {
                   <img
                     src={user?.profilePhotoUrl}
                     alt="Current Selfie"
-                    className="h-64 w-64 object-cover rounded-md"
+                    className="w-[230px] h-[340px] object-cover rounded-md"
                   />
                 </div>
               </div>
