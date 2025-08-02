@@ -45,15 +45,6 @@ const SelfieImage = ({ onSuccess, onClose }) => {
     };
   };
 
-  // Get consistent dimensions for both camera and preview
-  const getCameraDimensions = () => {
-    const isMobile = windowSize.width <= 768;
-    return {
-      width: isMobile ? 300 : 400,
-      height: isMobile ? 400 : 500
-    };
-  };
-
   // Convert dataURL to blob
   const dataURLtoBlob = (dataURL) => {
     const arr = dataURL.split(',');
@@ -67,16 +58,17 @@ const SelfieImage = ({ onSuccess, onClose }) => {
     return new Blob([u8arr], { type: mime });
   };
 
-  // Capture photo with exact same dimensions as preview
+  // Capture photo with device-appropriate settings
   const capturePhoto = useCallback(() => {
     if (webcamRef.current && isCameraReady) {
-      const dimensions = getCameraDimensions();
+      const isMobile = windowSize.width <= 768;
+      const quality = isMobile ? 0.85 : 0.9; // Slightly lower quality on mobile for performance
       
       const imageSrc = webcamRef.current.getScreenshot({
-        width: dimensions.width,
-        height: dimensions.height,
+        width: isMobile ? 640 : 1280,
+        height: isMobile ? 480 : 720,
         screenshotFormat: 'image/jpeg',
-        screenshotQuality: 0.9
+        screenshotQuality: quality
       });
       
       if (imageSrc) {
@@ -179,8 +171,6 @@ const SelfieImage = ({ onSuccess, onClose }) => {
 
   if (!isModalOpen) return null;
 
-  const dimensions = getCameraDimensions();
-
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
       <div className="max-w-md w-full bg-white rounded-lg shadow-lg relative max-h-[90vh] overflow-y-auto">
@@ -235,13 +225,7 @@ const SelfieImage = ({ onSuccess, onClose }) => {
               ) : (
                 // Camera Interface
                 <div>
-                  <div 
-                    className="relative mb-4 bg-gray-100 rounded-lg overflow-hidden mx-auto"
-                    style={{ 
-                      width: `${dimensions.width}px`, 
-                      height: `${dimensions.height}px` 
-                    }}
-                  >
+                  <div className="relative mb-4 bg-gray-100 rounded-lg overflow-hidden">
                     <Webcam
                       ref={webcamRef}
                       audio={false}
@@ -250,7 +234,7 @@ const SelfieImage = ({ onSuccess, onClose }) => {
                       onUserMedia={handleCameraReady}
                       onUserMediaError={handleCameraError}
                       mirrored={true}
-                      className="w-full h-full object-cover"
+                      className="w-full h-64 object-cover"
                       style={{ 
                         display: isCameraReady ? 'block' : 'none' 
                       }}
@@ -302,12 +286,7 @@ const SelfieImage = ({ onSuccess, onClose }) => {
                 <img
                   src={capturedImage}
                   alt="Captured selfie"
-                  className="mx-auto rounded-lg border-2 border-gray-300"
-                  style={{ 
-                    width: `${dimensions.width}px`, 
-                    height: `${dimensions.height}px`,
-                    objectFit: 'contain'
-                  }}
+                  className="w-full h-64 object-cover rounded-lg border-2 border-gray-300"
                 />
               </div>
 
