@@ -369,7 +369,7 @@ const SupervisorDashboard = () => {
                           <img
                             src={record.profilePhotoUrl}
                             alt="Profile"
-                            className="w-12 h-12 rounded-full object-cover cursor-pointer hover:opacity-80 transition-opacity"
+                            className="w-12 h-12 rounded-full object-fill cursor-pointer border border-gray-300  hover:opacity-80 transition-opacity"
                             onClick={() => handlePhotoClick(record.profilePhotoUrl)}
                           />
                         )}
@@ -435,22 +435,26 @@ const SupervisorDashboard = () => {
 
       {/* Photo Modal */}
       {showPhotoModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50 p-4">
-          <div className="relative max-w-md w-full">
-            <button
-              onClick={closePhotoModal}
-              className="absolute -top-4 -right-4 bg-white rounded-full p-2 hover:bg-gray-100 z-10"
-            >
-              <X size={24} className="text-gray-600" />
-            </button>
-            <img
-              src={selectedPhoto}
-              alt="Profile"
-              className="w-full h-auto rounded-lg max-h-[80vh] object-contain"
-            />
-          </div>
-        </div>
-      )}
+               <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-[1000] p-4">
+                 <div className="relative max-w-md">
+                   <button
+                     onClick={closePhotoModal}
+                     className="absolute -top-4 -right-4 bg-white rounded-full p-2 hover:bg-gray-100 z-10"
+                   >
+                     <X size={24} className="text-gray-600" />
+                   </button>
+                   <div className="relative">
+                    
+                     <img
+                       src={selectedPhoto}
+                       alt="Profile"
+                       className={`w-full h-auto rounded-lg max-h-[80vh] object-fill`}
+                      
+                     />
+                   </div>
+                 </div>
+               </div>
+             )}
 
       {/* Review Modal */}
       {showReviewModal && (
@@ -466,7 +470,7 @@ const SupervisorDashboard = () => {
                 <img
                   src={reviewData.profilePhotoUrl}
                   alt="Worker Profile"
-                  className="w-full h-auto rounded-lg max-h-[80vh] object-contain"
+                  className="w-full h-auto rounded-lg max-h-[50vh] object-contain"
                   onClick={() => handlePhotoClick(reviewData.profilePhotoUrl)}
                 />
               </div>
