@@ -13,6 +13,7 @@
     "react": "^19.0.0",
     "react-datepicker": "^8.0.0",
     "react-dom": "^19.0.0",
+    "react-html5-camera-photo": "^1.5.11",
     "react-qr-code": "^2.0.15",
     "react-router": "^7.1.4",
     "react-router-dom": "^7.1.4",

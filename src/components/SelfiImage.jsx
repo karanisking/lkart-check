@@ -1,16 +1,15 @@
-import React, { useState, useRef, useCallback, useEffect } from 'react';
-import Webcam from 'react-webcam';
+import React, { useState, useCallback, useEffect } from 'react';
+import Camera, { FACING_MODES, IMAGE_TYPES } from 'react-html5-camera-photo';
+import 'react-html5-camera-photo/build/css/index.css';
 import { useAuth } from '../context/auth-context';
 
 const SelfieImage = ({ onSuccess, onClose }) => {
-  const webcamRef = useRef(null);
   const [capturedImage, setCapturedImage] = useState(null);
   const [capturedBlob, setCapturedBlob] = useState(null);
   const [isUploading, setIsUploading] = useState(false);
   const [uploadStatus, setUploadStatus] = useState('');
   const [isModalOpen, setIsModalOpen] = useState(true);
   const [cameraError, setCameraError] = useState(null);
-  const [isCameraReady, setIsCameraReady] = useState(false);
   const [windowSize, setWindowSize] = useState({
     width: window.innerWidth,
     height: window.innerHeight
@@ -32,21 +31,29 @@ const SelfieImage = ({ onSuccess, onClose }) => {
     return () => window.removeEventListener('resize', handleResize);
   }, []);
 
-  // Get optimal camera constraints
-  const getVideoConstraints = () => {
+  // Get ideal dimensions based on device
+  const getCameraDimensions = () => {
     const isMobile = windowSize.width <= 768;
     
-    return {
-      width: { ideal: isMobile ? windowSize.width : 1280 },
-      height: { ideal: isMobile ? windowSize.height : 720 },
-      facingMode: "user",
-      frameRate: { ideal: 30, min: 15 },
-      aspectRatio: isMobile ? windowSize.width / windowSize.height : 16/9
-    };
+    if (isMobile) {
+      return {
+        idealFacingMode: FACING_MODES.USER,
+        idealResolution: { width: 640, height: 480 },
+        maxResolution: { width: 1280, height: 960 },
+        isImageMirror: true
+      };
+    } else {
+      return {
+        idealFacingMode: FACING_MODES.USER,
+        idealResolution: { width: 1280, height: 720 },
+        maxResolution: { width: 1920, height: 1080 },
+        isImageMirror: true
+      };
+    }
   };
 
-  // Convert dataURL to blob with quality preservation
-  const dataURLtoBlob = (dataURL, quality = 0.92) => {
+  // Convert dataURL to blob
+  const dataURLtoBlob = (dataURL) => {
     const arr = dataURL.split(',');
     const mime = arr[0].match(/:(.*?);/)[1];
     const bstr = atob(arr[1]);
@@ -58,29 +65,23 @@ const SelfieImage = ({ onSuccess, onClose }) => {
     return new Blob([u8arr], { type: mime });
   };
 
-  // High-quality capture with proper dimensions
-  const capturePhoto = useCallback(() => {
-    if (webcamRef.current && isCameraReady) {
-      const video = webcamRef.current.video;
-      const canvas = document.createElement('canvas');
-      
-      // Use the actual video dimensions
-      canvas.width = video.videoWidth;
-      canvas.height = video.videoHeight;
-      
-      const ctx = canvas.getContext('2d');
-      
-      // Draw the exact video frame to canvas
-      ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-      
-      // Get high-quality JPEG (0.92 quality)
-      const imageSrc = canvas.toDataURL('image/jpeg', 0.92);
-      
-      setCapturedImage(imageSrc);
-      const blob = dataURLtoBlob(imageSrc);
-      setCapturedBlob(blob);
-    }
-  }, [isCameraReady]);
+  // Handle photo capture
+  const handleTakePhoto = useCallback((dataUri) => {
+    setCapturedImage(dataUri);
+    const blob = dataURLtoBlob(dataUri);
+    setCapturedBlob(blob);
+  }, []);
+
+  // Handle camera errors
+  const handleCameraError = useCallback((error) => {
+    console.error('Camera error:', error);
+    setCameraError(error);
+  }, []);
+
+  // Handle camera start
+  const handleCameraStart = useCallback(() => {
+    setCameraError(null);
+  }, []);
 
   // Retake photo
   const retakePhoto = () => {
@@ -119,6 +120,7 @@ const SelfieImage = ({ onSuccess, onClose }) => {
           }));
         }
 
+        // Close modal after successful upload
         setTimeout(() => {
           if (onSuccess) {
             onSuccess();
@@ -137,19 +139,6 @@ const SelfieImage = ({ onSuccess, onClose }) => {
     }
   };
 
-  // Handle camera ready
-  const handleCameraReady = () => {
-    setIsCameraReady(true);
-    setCameraError(null);
-  };
-
-  // Handle camera error
-  const handleCameraError = (error) => {
-    console.error('Camera error:', error);
-    setIsCameraReady(false);
-    setCameraError(error);
-  };
-
   // Close modal
   const handleClose = () => {
     setIsModalOpen(false);
@@ -162,9 +151,10 @@ const SelfieImage = ({ onSuccess, onClose }) => {
   const getErrorMessage = () => {
     if (!cameraError) return null;
     
-    if (cameraError.name === 'NotAllowedError') {
+    const errorStr = cameraError.toString();
+    if (errorStr.includes('NotAllowedError') || errorStr.includes('Permission denied')) {
       return 'Camera access denied. Please allow camera permission and refresh the page.';
-    } else if (cameraError.name === 'NotFoundError') {
+    } else if (errorStr.includes('NotFoundError') || errorStr.includes('No camera found')) {
       return 'No camera found. Please check if your device has a camera.';
     } else {
       return 'Camera error occurred. Please try again or refresh the page.';
@@ -172,6 +162,8 @@ const SelfieImage = ({ onSuccess, onClose }) => {
   };
 
   if (!isModalOpen) return null;
+
+  const cameraSettings = getCameraDimensions();
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
@@ -227,58 +219,35 @@ const SelfieImage = ({ onSuccess, onClose }) => {
               ) : (
                 // Camera Interface
                 <div>
-                  <div className="relative mb-4 bg-gray-100 rounded-lg overflow-hidden">
-                    <Webcam
-                      ref={webcamRef}
-                      audio={false}
-                      screenshotFormat="image/jpeg"
-                      videoConstraints={getVideoConstraints()}
-                      onUserMedia={handleCameraReady}
-                      onUserMediaError={handleCameraError}
-                      mirrored={true} // This only affects display, not the captured image
-                      className="w-full h-auto max-h-[54vh] object-contain"
-                      style={{ 
-                        display: isCameraReady ? 'block' : 'none',
-                        transform: 'scaleX(-1)' // Mirror effect
-                      }}
-                    />
-                    
-                    {/* Loading overlay */}
-                    {!isCameraReady && !cameraError && (
-                      <div className="absolute inset-0 flex items-center justify-center bg-gray-200">
-                        <div className="text-center">
-                          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500 mx-auto mb-4"></div>
-                          <p className="text-gray-600">Starting camera...</p>
-                        </div>
-                      </div>
-                    )}
-
-                    {/* Camera frame overlay */}
-                    {isCameraReady && (
-                      <div className="absolute inset-0 border-2 border-dashed border-white opacity-50 pointer-events-none"></div>
-                    )}
+                  <div className="relative mb-4 rounded-lg overflow-hidden bg-black">
+                    <div className="camera-container" style={{ 
+                      width: '100%', 
+                      maxHeight: '400px',
+                      display: 'flex',
+                      justifyContent: 'center',
+                      alignItems: 'center'
+                    }}>
+                      <Camera
+                        onTakePhoto={handleTakePhoto}
+                        onCameraError={handleCameraError}
+                        onCameraStart={handleCameraStart}
+                        idealFacingMode={cameraSettings.idealFacingMode}
+                        idealResolution={cameraSettings.idealResolution}
+                        maxResolution={cameraSettings.maxResolution}
+                        isImageMirror={cameraSettings.isImageMirror}
+                        isMaxResolution={false}
+                        isDisplayStartCameraError={true}
+                        imageType={IMAGE_TYPES.JPG}
+                        imageCompression={0.92}
+                        sizeFactor={1}
+                        isFullscreen={false}
+                      />
+                    </div>
                   </div>
 
                   <p className="text-gray-600 mb-6 text-sm">
-                    Position your face in the frame and click capture
+                    Position your face in the frame and click the capture button
                   </p>
-
-                  <button
-                    onClick={capturePhoto}
-                    disabled={!isCameraReady}
-                    className="bg-green-500 hover:bg-green-700 disabled:bg-gray-400 text-white font-bold py-3 px-8 rounded-full text-lg shadow-lg transform hover:scale-105 transition-all duration-200 disabled:transform-none disabled:cursor-not-allowed"
-                  >
-                    {isCameraReady ? (
-                      <span className="flex items-center">
-                        <svg className="w-5 h-5 mr-2" fill="currentColor" viewBox="0 0 20 20">
-                          <path fillRule="evenodd" d="M4 5a2 2 0 00-2 2v8a2 2 0 002 2h12a2 2 0 002-2V7a2 2 0 00-2-2h-1.586a1 1 0 01-.707-.293l-1.121-1.121A2 2 0 0011.172 3H8.828a2 2 0 00-1.414.586L6.293 4.707A1 1 0 015.586 5H4zm6 9a3 3 0 100-6 3 3 0 000 6z" clipRule="evenodd" />
-                        </svg>
-                        Capture Selfie
-                      </span>
-                    ) : (
-                      'Loading Camera...'
-                    )}
-                  </button>
                 </div>
               )}
             </div>
@@ -289,15 +258,14 @@ const SelfieImage = ({ onSuccess, onClose }) => {
                 <img
                   src={capturedImage}
                   alt="Captured selfie"
-                  className="w-full h-auto max-h-[54vh] object-contain mx-auto rounded-lg border-2 border-gray-300"
-        
+                  className="w-full max-h-80 object-contain rounded-lg border-2 border-gray-300 bg-gray-50"
                 />
               </div>
 
               {/* Upload Status */}
               {uploadStatus === 'success' && (
                 <div className="bg-green-100 border border-green-400 text-green-700 px-4 py-3 rounded mb-4">
-                  <div className="flex items-center">
+                  <div className="flex items-center justify-center">
                     <svg className="w-5 h-5 mr-2" fill="currentColor" viewBox="0 0 20 20">
                       <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
                     </svg>
@@ -308,7 +276,7 @@ const SelfieImage = ({ onSuccess, onClose }) => {
 
               {uploadStatus && uploadStatus !== 'success' && (
                 <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded mb-4">
-                  <div className="flex items-center">
+                  <div className="flex items-center justify-center">
                     <svg className="w-5 h-5 mr-2" fill="currentColor" viewBox="0 0 20 20">
                       <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
                     </svg>
