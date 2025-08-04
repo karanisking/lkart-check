@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useEffect } from 'react';
+import React, { useState, useCallback, useEffect, useRef } from 'react';
 import Camera, { FACING_MODES, IMAGE_TYPES } from 'react-html5-camera-photo';
 import 'react-html5-camera-photo/build/css/index.css';
 import { useAuth } from '../context/auth-context';
@@ -10,10 +10,12 @@ const SelfieImage = ({ onSuccess, onClose }) => {
   const [uploadStatus, setUploadStatus] = useState('');
   const [isModalOpen, setIsModalOpen] = useState(true);
   const [cameraError, setCameraError] = useState(null);
+  const [isCameraReady, setIsCameraReady] = useState(false);
   const [windowSize, setWindowSize] = useState({
     width: window.innerWidth,
     height: window.innerHeight
   });
+  const cameraRef = useRef(null);
 
   const BASE_URL = process.env.REACT_APP_BASE_URL;
   const { token, user, setUser } = useAuth();
@@ -81,7 +83,87 @@ const SelfieImage = ({ onSuccess, onClose }) => {
   // Handle camera start
   const handleCameraStart = useCallback(() => {
     setCameraError(null);
+    setIsCameraReady(true);
+    
+    // Hide the default camera button circles and any capture icons after camera starts
+    setTimeout(() => {
+      // Hide the specific circle button elements
+      const circleElements = [
+        '#container-circles',
+        '#outer-circle', 
+        '#inner-circle',
+        '#white-flash'
+      ];
+      
+      circleElements.forEach(selector => {
+        const element = document.querySelector(selector);
+        if (element) {
+          element.style.display = 'none';
+          element.style.visibility = 'hidden';
+          element.style.opacity = '0';
+          element.style.pointerEvents = 'none';
+        }
+      });
+      
+      // Hide all other possible button selectors
+      const otherSelectors = [
+        '.react-html5-camera-photo button',
+        '.react-html5-camera-photo [role="button"]',
+        '.camera-photo button',
+        '.camera-photo [role="button"]',
+        '.camera-photo svg',
+        '.capture-button'
+      ];
+      
+      otherSelectors.forEach(selector => {
+        const elements = document.querySelectorAll(selector);
+        elements.forEach(element => {
+          element.style.display = 'none';
+          element.style.visibility = 'hidden';
+          element.style.opacity = '0';
+          element.style.pointerEvents = 'none';
+        });
+      });
+    }, 100);
+    
+    // Additional check after a longer delay to ensure everything stays hidden
+    setTimeout(() => {
+      const allElements = document.querySelectorAll('#container-circles, #outer-circle, #inner-circle, .react-html5-camera-photo button, .react-html5-camera-photo [role="button"]');
+      allElements.forEach(element => {
+        element.style.display = 'none';
+        element.style.visibility = 'hidden';
+        element.style.opacity = '0';
+      });
+    }, 1000);
   }, []);
+
+  // Custom capture function
+  const handleCapture = useCallback(() => {
+    if (isCameraReady) {
+      // Try to find and click the hidden circle button first
+      const circleButton = document.querySelector('#inner-circle');
+      if (circleButton) {
+        circleButton.click();
+        return;
+      }
+      
+      // Fallback to other possible selectors
+      const possibleSelectors = [
+        '#container-circles',
+        '.react-html5-camera-photo button',
+        '.react-html5-camera-photo [role="button"]',
+        '.camera-photo button'
+      ];
+      
+      for (let selector of possibleSelectors) {
+        const button = document.querySelector(selector);
+        if (button) {
+          button.click();
+          break;
+        }
+      }
+    }
+  }, [isCameraReady]);
 
   // Retake photo
   const retakePhoto = () => {
@@ -183,6 +265,52 @@ const SelfieImage = ({ onSuccess, onClose }) => {
 
         {/* Content */}
         <div className="p-4">
+          {/* Custom CSS to hide default camera button */}
+          <style jsx>{`
+            /* Hide the default capture button circles */
+            #container-circles {
+              display: none !important;
+              visibility: hidden !important;
+              opacity: 0 !important;
+            }
+            #outer-circle,
+            #inner-circle {
+              display: none !important;
+              visibility: hidden !important;
+              opacity: 0 !important;
+            }
+            
+            /* Hide any other button elements */
+            .react-html5-camera-photo > div > button {
+              display: none !important;
+            }
+            .react-html5-camera-photo button {
+              display: none !important;
+            }
+            .react-html5-camera-photo > div {
+              background: transparent !important;
+            }
+            .react-html5-camera-photo [role="button"] {
+              display: none !important;
+            }
+            .react-html5-camera-photo .camera-photo {
+              position: relative;
+            }
+            .react-html5-camera-photo .camera-photo button,
+            .react-html5-camera-photo .camera-photo [role="button"],
+            .react-html5-camera-photo .camera-photo .capture-button,
+            .react-html5-camera-photo .camera-photo svg {
+              display: none !important;
+              visibility: hidden !important;
+              opacity: 0 !important;
+            }
+            
+            /* Hide white flash effect */
+            #white-flash {
+              display: none !important;
+            }
+          `}</style>
+          
           {!capturedImage ? (
             // Camera View
             <div className="text-center">
@@ -220,13 +348,17 @@ const SelfieImage = ({ onSuccess, onClose }) => {
                 // Camera Interface
                 <div>
                   <div className="relative mb-4 rounded-lg overflow-hidden bg-black">
-                    <div className="camera-container" style={{ 
-                      width: '100%', 
-                      maxHeight: '400px',
-                      display: 'flex',
-                      justifyContent: 'center',
-                      alignItems: 'center'
-                    }}>
+                    <div 
+                      ref={cameraRef}
+                      className="camera-container" 
+                      style={{ 
+                        width: '100%', 
+                        maxHeight: '400px',
+                        display: 'flex',
+                        justifyContent: 'center',
+                        alignItems: 'center'
+                      }}
+                    >
                       <Camera
                         onTakePhoto={handleTakePhoto}
                         onCameraError={handleCameraError}
@@ -245,9 +377,26 @@ const SelfieImage = ({ onSuccess, onClose }) => {
                     </div>
                   </div>
 
-                  <p className="text-gray-600 mb-6 text-sm">
-                    Position your face in the frame and click the capture button
+                  <p className="text-gray-600 mb-4 text-sm">
+                    Position your face in the frame and click capture
                   </p>
+
+                  <button
+                    onClick={handleCapture}
+                    disabled={!isCameraReady}
+                    className="bg-green-500 hover:bg-green-700 disabled:bg-gray-400 text-white font-bold py-3 px-8 rounded-full text-lg shadow-lg transform hover:scale-105 transition-all duration-200 disabled:transform-none disabled:cursor-not-allowed"
+                  >
+                    {isCameraReady ? (
+                      <span className="flex items-center">
+                        <svg className="w-5 h-5 mr-2" fill="currentColor" viewBox="0 0 20 20">
+                          <path fillRule="evenodd" d="M4 5a2 2 0 00-2 2v8a2 2 0 002 2h12a2 2 0 002-2V7a2 2 0 00-2-2h-1.586a1 1 0 01-.707-.293l-1.121-1.121A2 2 0 0011.172 3H8.828a2 2 0 00-1.414.586L6.293 4.707A1 1 0 015.586 5H4zm6 9a3 3 0 100-6 3 3 0 000 6z" clipRule="evenodd" />
+                        </svg>
+                        Capture Selfie
+                      </span>
+                    ) : (
+                      'Loading Camera...'
+                    )}
+                  </button>
                 </div>
               )}
             </div>
