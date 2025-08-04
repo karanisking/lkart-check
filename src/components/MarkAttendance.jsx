@@ -25,6 +25,8 @@ const MarkAttendance = () => {
     locationValidated: false,
     busStatus: false,
     haveFood: false,
+    imageLoading: true, // Add image loading state
+    imageError: false,  // Add image error state
   });
 
   const fetchUserProfile = async (userId) => {
@@ -175,7 +177,9 @@ const MarkAttendance = () => {
           attendanceData: null,
           userProfile: profileData,
           showConfirmation: true,
-          params: { userId, currentDay, status }
+          params: { userId, currentDay, status },
+          imageLoading: true, // Reset image loading state
+          imageError: false,  // Reset image error state
         });
       } catch (error) {
         setState({
@@ -309,6 +313,24 @@ const MarkAttendance = () => {
     }));
   };
 
+  // Handle image load success
+  const handleImageLoad = () => {
+    setState(prev => ({
+      ...prev,
+      imageLoading: false,
+      imageError: false
+    }));
+  };
+
+  // Handle image load error
+  const handleImageError = () => {
+    setState(prev => ({
+      ...prev,
+      imageLoading: false,
+      imageError: true
+    }));
+  };
+
   useEffect(() => {
     if (state.userLocation) {
       // console.log("User location updated:", state.userLocation);
@@ -370,15 +392,28 @@ const MarkAttendance = () => {
 
   if (state.status === 'pending' && state.showConfirmation) {
     return (
-      <div className="fixed inset-0 flex items-center justify-center bg-white p-4">
-        <div className="bg-white rounded-lg shadow-lg w-full max-w-md overflow-hidden">
-          <div className="p-6">
+      <div className="min-h-screen overflow-y-auto pt-12 bg-gray-100 p-0">
+        <div className="max-w-4xl mx-auto bg-white shadow-lg rounded-lg p-4">
+          <div className="p-2">
             <div className="flex flex-col items-center mb-8">
-            <h2 className="text-2xl font-semibold text-gray-900 mb-6">
+              <h2 className="text-2xl font-semibold text-gray-900 mb-6">
                 Mark {state.params?.status === 'entry' ? 'Entry' : 'Exit'}
               </h2>
+              
+              {/* Profile Image with Loader */}
               {state.userProfile?.profile_photo ? (
                 <div className="relative">
+                  {/* Image Loader */}
+                  {state.imageLoading && (
+                    <div className="absolute inset-0 flex items-center justify-center bg-gray-100 mt-4 mb-4 rounded-lg min-h-[200px]">
+                      <div className="flex flex-col items-center space-y-2">
+                        <Loader2 className="h-8 w-8 animate-spin text-indigo-600" />
+                        <span className="text-sm text-gray-500">Loading image...</span>
+                      </div>
+                    </div>
+                  )}
+                  
+                  {/* Actual Image */}
                   <img
                     src={
                       state.userProfile.profile_photo.startsWith("data:image") ||
@@ -387,9 +422,22 @@ const MarkAttendance = () => {
                         : `data:image/jpeg;base64,${state.userProfile.profile_photo}`
                     }
                     alt="Profile"
-                    className="w-62 h-64 object-cover mb-4"
-                    onError={(e) => (e.target.style.display = "none")}
+                    className={`w-full h-auto rounded-lg max-h-[51vh] object-contain ${
+                      state.imageLoading ? 'opacity-0' : 'opacity-100'
+                    } transition-opacity duration-300`}
+                    onLoad={handleImageLoad}
+                    onError={handleImageError}
+                    style={{ display: state.imageError ? 'none' : 'block' }}
                   />
+                  
+                  {/* Error state - show default avatar if image fails to load */}
+                  {state.imageError && !state.imageLoading && (
+                    <div className="w-24 h-24 rounded-full bg-gray-200 flex items-center justify-center">
+                      <span className="text-2xl text-gray-500">
+                        {state.userProfile?.name?.charAt(0)?.toUpperCase()}
+                      </span>
+                    </div>
+                  )}
                 </div>
               ) : (
                 <div className="w-24 h-24 rounded-full bg-gray-200 flex items-center justify-center mb-4">
@@ -398,6 +446,7 @@ const MarkAttendance = () => {
                   </span>
                 </div>
               )}
+              
               <h2 className="text-xl font-semibold text-gray-800">
                 Name: {state.userProfile?.name}
               </h2>
@@ -429,7 +478,7 @@ const MarkAttendance = () => {
                     className="h-5 w-5 text-green-600 rounded"
                   />
                   <span className="ml-2 text-gray-700">
-                  Availed Food in Factory
+                    Availed Food in Factory
                   </span>
                 </div>
               )}
