@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { Loader2, LogOut, X, CheckCircle2, AlertCircle, Bus, UtensilsCrossed } from 'lucide-react';
+import { Loader2, LogOut, X, CheckCircle2, AlertCircle, Bus, UtensilsCrossed, LogIn } from 'lucide-react';
 import axios from "axios";
 import { useNavigate } from "react-router-dom";
 
@@ -17,6 +17,8 @@ const ViewAttendance = () => {
   // Photo modal states
   const [showPhotoModal, setShowPhotoModal] = useState(false);
   const [selectedPhoto, setSelectedPhoto] = useState('');
+  const [isModalImageLoading, setIsModalImageLoading] = useState(false);
+  const [imageLoadingStates, setImageLoadingStates] = useState({});
 
   // Exit modal states
   const [showExitModal, setShowExitModal] = useState(false);
@@ -29,6 +31,24 @@ const ViewAttendance = () => {
   });
   const [busExit, setBusExit] = useState(false);
   const [haveFood, setHaveFood] = useState(false);
+  const [departments, setDepartments] = useState([]);
+  const [selectedDepartment, setSelectedDepartment] = useState('');
+  const [isDeptOpen, setIsDeptOpen] = useState(false);
+
+  // Entry modal states
+  const [showEntryModal, setShowEntryModal] = useState(false);
+  const [phoneInput, setPhoneInput] = useState('');
+  const [workerDetails, setWorkerDetails] = useState(null);
+  const [entryDate, setEntryDate] = useState('');
+  const [entryTimeInput, setEntryTimeInput] = useState({
+    hours: '',
+    minutes: '',
+    period: 'AM'
+  });
+  const [busEntry, setBusEntry] = useState(false);
+  const [phoneError, setPhoneError] = useState('');
+  const [workerError, setWorkerError] = useState('');
+
   // Feedback modals
   const [showSuccessModal, setShowSuccessModal] = useState(false);
   const [showErrorModal, setShowErrorModal] = useState(false);
@@ -39,6 +59,7 @@ const ViewAttendance = () => {
 
   // New state for exit time validation error
   const [exitTimeError, setExitTimeError] = useState('');
+  const [entryTimeError, setEntryTimeError] = useState('');
 
   const observer = useRef();
   const loadingRef = useRef(null);
@@ -48,12 +69,14 @@ const ViewAttendance = () => {
 
   const openPhotoModal = (photoUrl) => {
     setSelectedPhoto(photoUrl);
+    setIsModalImageLoading(true);
     setShowPhotoModal(true);
   };
 
   const closePhotoModal = () => {
     setShowPhotoModal(false);
     setSelectedPhoto('');
+    setIsModalImageLoading(false);
   };
 
   const saveStateToStorage = (userId) => {
@@ -157,29 +180,60 @@ const ViewAttendance = () => {
     if (!selectedRecord || !exitDate || !timeInput.hours || !timeInput.minutes) {
       return false;
     }
-  
+
     const entryDateTime = new Date(selectedRecord.entryTime);
-  
+
     const time24h = convertTo24HourWithSeconds(
       timeInput.hours,
       timeInput.minutes.padStart(2, '0'),
       timeInput.period
     );
     const exitDateTime = new Date(`${exitDate}T${time24h}.000Z`);
-  
+
     if (exitDateTime <= entryDateTime) {
       setExitTimeError(`Exit time must be after entry time`);
       return false;
     }
-  
+
     const diffInHours = (exitDateTime - entryDateTime) / (1000 * 60 * 60);
-  
+
     if (diffInHours > 14) {
       setExitTimeError(`Exit time cannot be more than 14 hours after entry time`);
       return false;
     }
-  
+
     setExitTimeError('');
+    return true;
+  };
+
+  const validateEntryDateTime = () => {
+    if (!entryDate || !entryTimeInput.hours || !entryTimeInput.minutes) {
+      return false;
+    }
+
+    const now = new Date();
+    const selectedDate = new Date(entryDate);
+    const todayDate = new Date(today);
+    const yesterdayDate = new Date(yesterday);
+
+    // Only allow today or yesterday's date
+    if (selectedDate.getTime() !== todayDate.getTime() &&
+        selectedDate.getTime() !== yesterdayDate.getTime()) {
+      setEntryTimeError('Entry date must be today or yesterday');
+      return false;
+    }
+
+    // Validate time is not in the future if date is today
+    if (selectedDate.getTime() === todayDate.getTime()) {
+      const time24h = convertTo24HourWithSeconds(
+        entryTimeInput.hours,
+        entryTimeInput.minutes.padStart(2, '0'),
+        entryTimeInput.period
+      );
+      const entryDateTime = new Date(`${entryDate}T${time24h}.000Z`);
+    }
+
+    setEntryTimeError('');
     return true;
   };
 
@@ -210,8 +264,24 @@ const ViewAttendance = () => {
         if (isNewSearch) {
           setAttendanceData(result.data);
           setShowTable(true);
+          // Initialize loading states for new images
+          const initialLoadingStates = {};
+          result.data.forEach(record => {
+            if (record.profilePhotoUrl) {
+              initialLoadingStates[record.profilePhotoUrl] = true;
+            }
+          });
+          setImageLoadingStates(initialLoadingStates);
         } else {
           setAttendanceData((prev) => [...prev, ...result.data]);
+          // Add loading states for new images
+          const newLoadingStates = {};
+          result.data.forEach(record => {
+            if (record.profilePhotoUrl) {
+              newLoadingStates[record.profilePhotoUrl] = true;
+            }
+          });
+          setImageLoadingStates(prev => ({ ...prev, ...newLoadingStates }));
         }
         setHasMore(result.data.length > 0 && page < result.pagination.totalPages);
       } else {
@@ -243,6 +313,137 @@ const ViewAttendance = () => {
       setHasMore(false);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleExitClick = async (record, e) => {
+    e.stopPropagation();
+
+    try {
+      setLoading(true);
+      // Fetch departments first
+      const token = localStorage.getItem("superadmintoken");
+      const response = await axios.get(
+        `${BASE_URL}/lenskart/department`,
+        {
+          headers: {
+            Authorization: `Bearer ${token}`,
+            "Content-Type": "application/json",
+          },
+        }
+      );
+
+      if (response.data.success && Array.isArray(response.data.departments)) {
+        // Filter out "All" from departments
+        const filteredDepartments = response.data.departments.filter(dept => dept !== "All");
+        setDepartments(filteredDepartments);
+      }
+
+      // Then set the record and open modal
+      setSelectedRecord(record);
+      setSelectedDepartment(record.department || '');
+
+      const defaultDate = record.exitDate ? record.exitDate.split('T')[0] : record.entryDate.split('T')[0];
+      setExitDate(defaultDate);
+
+      setShowExitModal(true);
+      setTimeInput({
+        hours: '',
+        minutes: '',
+        period: 'PM'
+      });
+      setBusExit(false);
+      setHaveFood(false);
+      setExitTimeError('');
+    } catch (error) {
+      console.error("Error fetching departments:", error);
+      setErrorMessage("Failed to load departments");
+      setShowErrorModal(true);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const validatePhoneNumber = (phone) => {
+    const phoneRegex = /^[6-9]\d{9}$/;
+    if (!phone) {
+      setPhoneError('Please enter a phone number');
+      return false;
+    }
+    if (!phoneRegex.test(phone)) {
+      setPhoneError('Invalid phone number.');
+      return false;
+    }
+    setPhoneError('');
+    return true;
+  };
+
+  const handleCheckPhone = async () => {
+    if (!validatePhoneNumber(phoneInput)) {
+      return;
+    }
+
+    try {
+      setLoading(true);
+      setWorkerError('');
+      const token = localStorage.getItem("superadmintoken");
+
+      const response = await axios.post(
+        `${BASE_URL}/lenskart-admin/phone-details`,
+        { phone: "91" + phoneInput },
+        {
+          headers: {
+            Authorization: `Bearer ${token}`,
+            'Content-Type': 'application/json'
+          }
+        }
+      );
+
+      if (response.data.success) {
+        setWorkerDetails({
+          name: response.data.data.name,
+          department: response.data.data.department,
+          userId: response.data.data._id
+        });
+      } else {
+        setWorkerError('Worker not signed up');
+        setWorkerDetails(null);
+      }
+    } catch (error) {
+      setWorkerError('Worker not signed up');
+      setWorkerDetails(null);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleEntryTimeChange = (e) => {
+    const { name, value } = e.target;
+
+    if (name === 'hours' && value !== '') {
+      const num = parseInt(value);
+      if (isNaN(num) || num < 1 || num > 12) return;
+    }
+
+    if (name === 'minutes' && value !== '') {
+      const num = parseInt(value);
+      if (isNaN(num) || num < 0 || num > 59) return;
+    }
+
+    setEntryTimeInput(prev => ({
+      ...prev,
+      [name]: value
+    }));
+
+    if (entryTimeError) {
+      setEntryTimeError('');
+    }
+  };
+
+  const handleEntryDateChange = (e) => {
+    setEntryDate(e.target.value);
+    if (entryTimeError) {
+      setEntryTimeError('');
     }
   };
 
@@ -313,25 +514,6 @@ const ViewAttendance = () => {
     return `${formattedHour}:${formattedMinute}:00`;
   };
 
-  const handleExitClick = (record, e) => {
-    e.stopPropagation();
-    setSelectedRecord(record);
-
-    const defaultDate = record.exitDate ? record.exitDate.split('T')[0] : record.entryDate.split('T')[0];
-    setExitDate(defaultDate);
-
-    setShowExitModal(true);
-    setTimeInput({
-      hours: '',
-      minutes: '',
-      period: 'PM'
-    });
-    setBusExit(false);
-    setHaveFood(false);
-
-    setExitTimeError('');
-  };
-
   const handleTimeChange = (e) => {
     const { name, value } = e.target;
 
@@ -359,6 +541,49 @@ const ViewAttendance = () => {
     setExitDate(e.target.value);
     if (exitTimeError) {
       setExitTimeError('');
+    }
+  };
+
+  const handleDepartmentUpdate = async () => {
+    if (!selectedDepartment) {
+      setErrorMessage('Please select a department');
+      setShowErrorModal(true);
+      return;
+    }
+
+    try {
+      setLoading(true);
+      const token = localStorage.getItem("superadmintoken");
+
+      const response = await axios.post(
+        `${BASE_URL}/lenskart-admin/update-department`,
+        {
+          workerId: selectedRecord.userId,
+          department: selectedDepartment
+        },
+        {
+          headers: {
+            Authorization: `Bearer ${token}`,
+            'Content-Type': 'application/json'
+          }
+        }
+      );
+
+      if (response.data.success) {
+        setErrorMessage('Department has been updated successfully');
+        setShowSuccessModal(true);
+
+        fetchAttendanceData(1, true);
+      } else {
+        setErrorMessage(response.data.message || 'Failed to update department');
+        setShowErrorModal(true);
+      }
+    } catch (error) {
+      console.error('Error updating department:', error);
+      setErrorMessage(error.response?.data?.message || 'Error updating department. Please try again.');
+      setShowErrorModal(true);
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -413,6 +638,7 @@ const ViewAttendance = () => {
       );
 
       if (response.data.success) {
+        setErrorMessage('Exit time has been marked successfully');
         setShowSuccessModal(true);
         setShowExitModal(false);
         fetchAttendanceData(1, true);
@@ -429,6 +655,75 @@ const ViewAttendance = () => {
     }
   };
 
+  const handleEntrySubmit = async () => {
+    if (!entryTimeInput.hours || !entryTimeInput.minutes) {
+      setErrorMessage('Please enter both hours and minutes');
+      setShowErrorModal(true);
+      return;
+    }
+
+    if (!entryDate) {
+      setErrorMessage('Please select an entry date');
+      setShowErrorModal(true);
+      return;
+    }
+
+    if (!validateEntryDateTime()) {
+      return;
+    }
+
+    try {
+      setLoading(true);
+      const token = localStorage.getItem("superadmintoken");
+
+      const time24h = convertTo24HourWithSeconds(
+        entryTimeInput.hours,
+        entryTimeInput.minutes.padStart(2, '0'),
+        entryTimeInput.period
+      );
+
+      const entryDateTime = new Date(`${entryDate}T${time24h}.000Z`).toISOString();
+
+      const payload = {
+        userId: workerDetails.userId,
+        date: entryDate,
+        status: 'entry',
+        adminPhone: "+919325859487",
+        entryTime: entryDateTime,
+        busEntry: busEntry
+      };
+
+      const response = await axios.post(
+        `${BASE_URL}/lenskart-admin/mark-entry-exit`,
+        payload,
+        {
+          headers: {
+            Authorization: `Bearer ${token}`,
+            'Content-Type': 'application/json'
+          }
+        }
+      );
+
+      if (response.data.success) {
+        setErrorMessage('Entry time has been marked successfully');
+        setShowSuccessModal(true);
+        setShowEntryModal(false);
+        setWorkerDetails(null);
+        setPhoneInput('');
+        setBusEntry(false);
+      } else {
+        setErrorMessage(response.data.message || 'Failed to record entry time');
+        setShowErrorModal(true);
+      }
+    } catch (error) {
+      console.error('Error recording entry time:', error);
+      setErrorMessage(error.response?.data?.message || 'Error recording entry time. Please try again.');
+      setShowErrorModal(true);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const handleRowClick = (userId) => {
     saveStateToStorage(userId);
   };
@@ -439,48 +734,159 @@ const ViewAttendance = () => {
     }
   }, [currentPage]);
 
+  // Set default entry date when modal opens
+  useEffect(() => {
+    if (showEntryModal) {
+      const today = new Date();
+      const yesterday = new Date(today);
+      yesterday.setDate(yesterday.getDate() - 1);
+      const currentHour = today.getHours();
+      const defaultDate = currentHour < 12 ? today.toISOString().split('T')[0] : yesterday.toISOString().split('T')[0];
+      setEntryDate(defaultDate);
+    }
+  }, [showEntryModal]);
+
+  // Get today and yesterday dates for limiting calendar
+  const getAllowedDates = () => {
+    const today = new Date();
+    const yesterday = new Date(today);
+    yesterday.setDate(yesterday.getDate() - 1);
+    return {
+      today: today.toISOString().split('T')[0],
+      yesterday: yesterday.toISOString().split('T')[0]
+    };
+  };
+
+  const { today, yesterday } = getAllowedDates();
+
+  // Set default entry date when modal opens
+  useEffect(() => {
+    if (showEntryModal) {
+      // Always default to today's date
+      setEntryDate(today);
+    }
+  }, [showEntryModal, today]);
+
+  // Handle image load completion
+  const handleImageLoad = (photoUrl) => {
+    setImageLoadingStates(prev => ({
+      ...prev,
+      [photoUrl]: false
+    }));
+  };
+
   return (
     <div className="min-h-screen overflow-y-auto pt-16 bg-gray-100 p-0">
       <div className="max-w-6xl mx-auto bg-white shadow-lg rounded-lg p-4">
         <h2 className="text-2xl font-bold mb-4 text-center">View Attendance</h2>
 
-        {/* Date Selection */}
-        <div className="flex flex-col sm:flex-row gap-2 mb-4">
-          <div className="flex flex-1 gap-2">
-            <div className="flex-1">
-              <label className="text-sm text-gray-600 mb-1 block">From:</label>
-              <input
-                type="date"
-                value={fromDate}
-                onChange={(e) => {
-                  setFromDate(e.target.value);
-                  setDateError('');
-                }}
-                className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded-md"
-              />
+        <div className="mb-4">
+          {/* Desktop/Tablet Layout (sm and above) */}
+          <div className="hidden sm:block">
+            <div className="flex gap-2 mb-2">
+              <div className="flex-1">
+                <label className="text-sm text-gray-600 mb-1 block">From:</label>
+                <input
+                  type="date"
+                  value={fromDate}
+                  onChange={(e) => {
+                    setFromDate(e.target.value);
+                    setDateError('');
+                  }}
+                  className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded-md"
+                />
+              </div>
+
+              <div className="flex-1">
+                <label className="text-sm text-gray-600 mb-1 block">To:</label>
+                <input
+                  type="date"
+                  value={toDate}
+                  onChange={(e) => {
+                    setToDate(e.target.value);
+                    setDateError('');
+                  }}
+                  className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded-md"
+                />
+              </div>
+
+              <div className="flex items-end">
+                <button
+                  onClick={handleApply}
+                  disabled={!fromDate || !toDate || loading}
+                  className="px-4 py-1.5 bg-indigo-600 text-white text-sm rounded-md hover:bg-indigo-700 disabled:bg-indigo-300 disabled:cursor-not-allowed flex items-center justify-center gap-1"
+                >
+                  {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : (
+                    <>
+                      <span>Apply</span>
+                    </>
+                  )}
+                </button>
+              </div>
             </div>
 
-            <div className="flex-1">
-              <label className="text-sm text-gray-600 mb-1 block">To:</label>
-              <input
-                type="date"
-                value={toDate}
-                onChange={(e) => {
-                  setToDate(e.target.value);
-                  setDateError('');
-                }}
-                className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded-md"
-              />
+            <div className="flex justify-start">
+              <button
+                onClick={() => setShowEntryModal(true)}
+                className="px-4 py-1.5 bg-green-600 text-white text-sm rounded-md hover:bg-green-700 flex items-center justify-center gap-1"
+              >
+                <LogIn className="h-4 w-4" />
+                <span>Mark Entry</span>
+              </button>
             </div>
           </div>
 
-          <button
-            onClick={handleApply}
-            disabled={!fromDate || !toDate || loading}
-            className="px-4 py-1.5 bg-indigo-600 text-white text-sm rounded-md hover:bg-indigo-700 disabled:bg-indigo-300 disabled:cursor-not-allowed self-end"
-          >
-            {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Apply'}
-          </button>
+          {/* Mobile Layout (below sm) */}
+          <div className="block sm:hidden">
+            <div className="flex gap-2 mb-2">
+              <div className="flex-1">
+                <label className="text-sm text-gray-600 mb-1 block">From:</label>
+                <input
+                  type="date"
+                  value={fromDate}
+                  onChange={(e) => {
+                    setFromDate(e.target.value);
+                    setDateError('');
+                  }}
+                  className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded-md"
+                />
+              </div>
+
+              <div className="flex-1">
+                <label className="text-sm text-gray-600 mb-1 block">To:</label>
+                <input
+                  type="date"
+                  value={toDate}
+                  onChange={(e) => {
+                    setToDate(e.target.value);
+                    setDateError('');
+                  }}
+                  className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded-md"
+                />
+              </div>
+            </div>
+
+            <div className="flex justify-between">
+              <button
+                onClick={() => setShowEntryModal(true)}
+                className="px-4 py-1.5 bg-green-600 text-white text-sm rounded-md hover:bg-green-700 flex items-center justify-center gap-1"
+              >
+                <span>Mark Entry</span>
+              </button>
+
+              <button
+                onClick={handleApply}
+                disabled={!fromDate || !toDate || loading}
+                className="px-4 py-1.5 bg-indigo-600 text-white text-sm rounded-md hover:bg-indigo-700 disabled:bg-indigo-300 disabled:cursor-not-allowed flex items-center justify-center gap-1"
+              >
+                {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : (
+                  <>
+                    <span>Apply</span>
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
         </div>
 
         {dateError && (
@@ -525,15 +931,24 @@ const ViewAttendance = () => {
                       <td className="p-2 text-left min-w-[140px]">
                         <div className="flex items-center">
                           {record.profilePhotoUrl && (
-                            <img
-                              src={record.profilePhotoUrl}
-                              alt="Profile"
-                              className="w-12 h-12 rounded-full object-cover cursor-pointer hover:opacity-80 transition-opacity"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                openPhotoModal(record.profilePhotoUrl);
-                              }}
-                            />
+                            <div className="relative w-12 h-12">
+                              {imageLoadingStates[record.profilePhotoUrl] && (
+                                <div className="absolute inset-0 flex items-center justify-center bg-gray-200 rounded-full">
+                                  <Loader2 className="h-6 w-6 animate-spin text-gray-500" />
+                                </div>
+                              )}
+                              <img
+                                src={record.profilePhotoUrl}
+                                alt="Profile"
+                                className={`w-12 h-12 rounded-full object-fill cursor-pointer border border-gray-300 hover:opacity-80 transition-opacity ${imageLoadingStates[record.profilePhotoUrl] ? 'opacity-0' : 'opacity-100'}`}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  openPhotoModal(record.profilePhotoUrl);
+                                }}
+                                onLoad={() => handleImageLoad(record.profilePhotoUrl)}
+                                onError={() => handleImageLoad(record.profilePhotoUrl)}
+                              />
+                            </div>
                           )}
                           <div className="ml-2">
                             <div className="font-medium">{record.name}</div>
@@ -609,18 +1024,27 @@ const ViewAttendance = () => {
         {/* Photo Modal */}
         {showPhotoModal && (
           <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-[1000] p-4">
-            <div className="relative max-w-md w-full">
+            <div className="relative max-w-md">
               <button
                 onClick={closePhotoModal}
                 className="absolute -top-4 -right-4 bg-white rounded-full p-2 hover:bg-gray-100 z-10"
               >
                 <X size={24} className="text-gray-600" />
               </button>
-              <img
-                src={selectedPhoto}
-                alt="Profile"
-                className="w-full h-auto rounded-lg max-h-[80vh] object-contain"
-              />
+              <div className="relative">
+                {isModalImageLoading && (
+                  <div className="absolute inset-0 flex items-center justify-center bg-gray-200 rounded-lg">
+                    <Loader2 className="h-8 w-8 animate-spin text-gray-500" />
+                  </div>
+                )}
+                <img
+                  src={selectedPhoto}
+                  alt="Profile"
+                  className={`w-full h-auto rounded-lg max-h-[80vh] object-fill ${isModalImageLoading ? 'opacity-0' : 'opacity-100'}`}
+                  onLoad={() => setIsModalImageLoading(false)}
+                  onError={() => setIsModalImageLoading(false)}
+                />
+              </div>
             </div>
           </div>
         )}
@@ -641,122 +1065,334 @@ const ViewAttendance = () => {
                 />
               </div>
 
-              <div className="mb-6">
-                <p className="text-sm text-gray-600 mb-2">
-                  Worker Name: <span className="font-medium">{selectedRecord?.name}</span>
-                </p>
-
-                <div className="mb-4">
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Exit Date
-                  </label>
-                  <input
-                    type="date"
-                    value={exitDate}
-                    onChange={handleExitDateChange}
-                    className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded-md"
-                  />
+              {loading ? (
+                <div className="flex justify-center items-center py-8">
+                  <Loader2 className="h-8 w-8 animate-spin" />
                 </div>
+              ) : (
+                <div className="mb-6">
+                  <p className="text-sm text-gray-600 mb-4">
+                    Worker Name: <span className="font-medium">{selectedRecord?.name}</span>
+                  </p>
 
-                <div className="flex flex-col items-center mb-4">
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Enter Exit Time
-                  </label>
-                  <div className="flex items-center gap-2">
-                    <input
-                      type="number"
-                      name="hours"
-                      value={timeInput.hours}
-                      onChange={handleTimeChange}
-                      placeholder="HH"
-                      min="1"
-                      max="12"
-                      className="w-16 px-3 py-2 border border-gray-300 rounded-md text-center"
-                    />
-                    <span>:</span>
-                    <input
-                      type="number"
-                      name="minutes"
-                      value={timeInput.minutes}
-                      onChange={handleTimeChange}
-                      placeholder="MM"
-                      min="0"
-                      max="59"
-                      className="w-16 px-3 py-2 border border-gray-300 rounded-md text-center"
-                    />
-                    <select
-                      name="period"
-                      value={timeInput.period}
-                      onChange={handleTimeChange}
-                      className="w-20 px-2 py-2 border border-gray-300 rounded-md"
+                  {/* Department Section */}
+                  <div className="mb-4">
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Department
+                    </label>
+                    <div className="flex gap-2">
+                      <div className="relative flex-1">
+                        <button
+                          onClick={() => setIsDeptOpen(!isDeptOpen)}
+                          className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md text-left flex justify-between items-center"
+                        >
+                          {selectedDepartment || 'Select Department'}
+                          <svg
+                            className={`h-4 w-4 transform transition-transform ${isDeptOpen ? 'rotate-180' : ''}`}
+                            xmlns="http://www.w3.org/2000/svg"
+                            viewBox="0 0 20 20"
+                            fill="currentColor"
+                          >
+                            <path fillRule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clipRule="evenodd" />
+                          </svg>
+                        </button>
+
+                        {isDeptOpen && (
+                          <div className="absolute z-10 mt-1 w-full bg-white shadow-lg rounded-md py-1 max-h-48 overflow-auto border border-gray-300">
+                            {departments.map((dept, index) => (
+                              <button
+                                key={index}
+                                onClick={() => {
+                                  setSelectedDepartment(dept);
+                                  setIsDeptOpen(false);
+                                }}
+                                className={`block w-full text-left px-4 py-2 text-sm hover:bg-indigo-100 ${selectedDepartment === dept ? 'bg-indigo-50 text-indigo-700' : 'text-gray-700'}`}
+                              >
+                                {dept}
+                              </button>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+
+                    </div>
+                    <button
+                      onClick={handleDepartmentUpdate}
+                      disabled={loading || !selectedDepartment}
+                      className="mt-4 px-3 py-2 bg-indigo-600 text-white text-sm rounded-md hover:bg-indigo-700 disabled:bg-indigo-300"
                     >
-                      <option value="AM">AM</option>
-                      <option value="PM">PM</option>
-                    </select>
+                      Update Department
+                    </button>
                   </div>
-                </div>
 
-                <div className="flex items-center justify-center mb-4">
-                  <input
-                    type="checkbox"
-                    id="busExit"
-                    checked={busExit}
-                    onChange={(e) => setBusExit(e.target.checked)}
-                    className="h-6 w-6 text-indigo-600 focus:ring-indigo-500 border-gray-300 rounded"
-                  />
-                  <label htmlFor="busExit" className="ml-2 block text-lg text-gray-700">
-                    Taken Factorykaam Bus Service
-                  </label>
-                </div>
+                  <div className="mb-4">
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Exit Date
+                    </label>
+                    <input
+                      type="date"
+                      value={exitDate}
+                      onChange={handleExitDateChange}
+                      className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md"
+                    />
+                  </div>
 
-                <div className="flex items-center justify-center mb-4">
-                  <input
-                    type="checkbox"
-                    id="havefood"
-                    checked={haveFood}
-                    onChange={(e) => setHaveFood(e.target.checked)}
-                    className="h-6 w-6 text-indigo-600 focus:ring-indigo-500 border-gray-300 rounded"
-                  />
-                  <label htmlFor="haveFood" className="ml-2 block text-lg text-gray-700">
-                    Availed Food in Factory
-                  </label>
-                </div>
-
-
-                {exitTimeError && (
-                  <div className="bg-red-50 border border-red-200 text-red-700 px-3 py-2 rounded-md mb-4">
-                    <div className="flex items-center">
-                      <AlertCircle className="h-4 w-4 mr-2 flex-shrink-0" />
-                      <span className="text-sm">{exitTimeError}</span>
+                  <div className="mb-4">
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Exit Time
+                    </label>
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="number"
+                        name="hours"
+                        value={timeInput.hours}
+                        onChange={handleTimeChange}
+                        placeholder="HH"
+                        min="1"
+                        max="12"
+                        className="w-16 px-3 py-2 border border-gray-300 rounded-md text-center"
+                      />
+                      <span>:</span>
+                      <input
+                        type="number"
+                        name="minutes"
+                        value={timeInput.minutes}
+                        onChange={handleTimeChange}
+                        placeholder="MM"
+                        min="0"
+                        max="59"
+                        className="w-16 px-3 py-2 border border-gray-300 rounded-md text-center"
+                      />
+                      <select
+                        name="period"
+                        value={timeInput.period}
+                        onChange={handleTimeChange}
+                        className="w-20 px-2 py-2 border border-gray-300 rounded-md"
+                      >
+                        <option value="AM">AM</option>
+                        <option value="PM">PM</option>
+                      </select>
                     </div>
                   </div>
-                )}
+
+                  <div className="flex items-start mb-3">
+                    <input
+                      type="checkbox"
+                      id="busExit"
+                      checked={busExit}
+                      onChange={(e) => setBusExit(e.target.checked)}
+                      className="h-4 w-4 text-indigo-600 focus:ring-indigo-500 border-gray-300 rounded mt-1"
+                    />
+                    <label htmlFor="busExit" className="ml-2 block text-sm text-gray-700">
+                      Taken Factorykaam Bus Service
+                    </label>
+                  </div>
+
+                  <div className="flex items-start mb-4">
+                    <input
+                      type="checkbox"
+                      id="havefood"
+                      checked={haveFood}
+                      onChange={(e) => setHaveFood(e.target.checked)}
+                      className="h-4 w-4 text-indigo-600 focus:ring-indigo-500 border-gray-300 rounded mt-1"
+                    />
+                    <label htmlFor="haveFood" className="ml-2 block text-sm text-gray-700">
+                      Availed Food in Factory
+                    </label>
+                  </div>
+
+                  {exitTimeError && (
+                    <div className="bg-red-50 border border-red-200 text-red-700 px-3 py-2 rounded-md mb-4">
+                      <div className="flex items-center">
+                        <AlertCircle className="h-4 w-4 mr-2 flex-shrink-0" />
+                        <span className="text-sm">{exitTimeError}</span>
+                      </div>
+                    </div>
+                  )}
+
+                  <button
+                    onClick={handleExitSubmit}
+                    disabled={loading || !timeInput.hours || !timeInput.minutes || !exitDate}
+                    className="px-4 py-2 bg-indigo-600 text-white rounded-md hover:bg-indigo-700 disabled:bg-indigo-300 flex items-center justify-center"
+                  >
+                    {loading ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      'Mark Exit Time'
+                    )}
+                  </button>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* Entry Time Modal */}
+        {showEntryModal && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[1000]">
+            <div className="bg-white rounded-lg p-6 max-w-md w-full mx-4">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-lg font-semibold">Mark Entry Time</h3>
+                <X
+                  className="h-5 w-5 cursor-pointer text-gray-500 hover:text-gray-700"
+                  onClick={() => {
+                    setShowEntryModal(false);
+                    setBusEntry(false);
+                    setWorkerDetails(null);
+                    setPhoneInput('');
+                    setPhoneError('');
+                    setWorkerError('');
+                    setEntryDate('');
+                    setEntryTimeInput({ hours: '', minutes: '', period: 'AM' });
+                  }}
+                />
               </div>
 
-              <div className="flex gap-3">
-                <button
-                  onClick={() => {
-                    setShowExitModal(false);
-                    setBusExit(false);
-                    setHaveFood(false);
-                  }}
-                  className="flex-1 px-4 py-2 text-gray-700 bg-gray-200 rounded-md hover:bg-gray-300"
-                  disabled={loading}
-                >
-                  Cancel
-                </button>
-                <button
-                  onClick={handleExitSubmit}
-                  disabled={loading || !timeInput.hours || !timeInput.minutes || !exitDate}
-                  className="flex-1 px-4 py-2 bg-indigo-600 text-white rounded-md hover:bg-indigo-700 disabled:bg-indigo-300 flex items-center justify-center"
-                >
-                  {loading ? (
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                  ) : (
-                    'Submit'
+              {loading ? (
+                <div className="flex justify-center items-center py-8">
+                  <Loader2 className="h-8 w-8 animate-spin" />
+                </div>
+              ) : (
+                <div className="mb-6">
+                  <div className="mb-4">
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Phone Number
+                    </label>
+                    <div className="flex flex-col gap-2">
+                      <div className="flex gap-2">
+                        <input
+                          type="text"
+                          value={phoneInput}
+                          onChange={(e) => {
+                            const value = e.target.value;
+                            if (/^\d{0,10}$/.test(value)) {
+                              setPhoneInput(value);
+                              setPhoneError('');
+                              setWorkerError('');
+                            }
+                          }}
+                          placeholder="Enter worker phone number"
+                          className="flex-1 px-3 py-2 text-sm border border-gray-300 rounded-md"
+                        />
+                      </div>
+                      <div className="flex justify-start">
+                        <button
+                          onClick={handleCheckPhone}
+                          disabled={!phoneInput || phoneInput.length !== 10}
+                          className="px-3 py-2 bg-indigo-600 text-white text-sm rounded-md hover:bg-indigo-700 disabled:bg-indigo-300"
+                        >
+                          Check
+                        </button>
+                      </div>
+                      {phoneError && (
+                        <div className="text-red-500 text-sm mt-1">{phoneError}</div>
+                      )}
+                      {workerError && (
+                        <div className="text-red-500 text-sm mt-1">{workerError}</div>
+                      )}
+                    </div>
+                  </div>
+
+                  {workerDetails && (
+                    <>
+                      <div className="mb-4">
+                        <p className="text-sm text-gray-600">
+                          Worker Name: <span className="font-medium">{workerDetails.name}</span>
+                        </p>
+                        <p className="text-sm text-gray-600">
+                          Department: <span className="font-medium">{workerDetails.department}</span>
+                        </p>
+                      </div>
+
+                      <div className="mb-4">
+                        <label className="block text-sm font-medium text-gray-700 mb-1">
+                          Entry Date
+                        </label>
+                        <input
+                          type="date"
+                          value={entryDate}
+                          onChange={handleEntryDateChange}
+                          className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md"
+                          min={yesterday}
+                          max={today}
+                        />
+                      </div>
+
+                      <div className="mb-4">
+                        <label className="block text-sm font-medium text-gray-700 mb-1">
+                          Entry Time
+                        </label>
+                        <div className="flex items-center gap-2">
+                          <input
+                            type="number"
+                            name="hours"
+                            value={entryTimeInput.hours}
+                            onChange={handleEntryTimeChange}
+                            placeholder="HH"
+                            min="1"
+                            max="12"
+                            className="w-16 px-3 py-2 border border-gray-300 rounded-md text-center"
+                          />
+                          <span>:</span>
+                          <input
+                            type="number"
+                            name="minutes"
+                            value={entryTimeInput.minutes}
+                            onChange={handleEntryTimeChange}
+                            placeholder="MM"
+                            min="0"
+                            max="59"
+                            className="w-16 px-3 py-2 border border-gray-300 rounded-md text-center"
+                          />
+                          <select
+                            name="period"
+                            value={entryTimeInput.period}
+                            onChange={handleEntryTimeChange}
+                            className="w-20 px-2 py-2 border border-gray-300 rounded-md"
+                          >
+                            <option value="AM">AM</option>
+                            <option value="PM">PM</option>
+                          </select>
+                        </div>
+                      </div>
+
+                      <div className="flex items-start mb-4">
+                        <input
+                          type="checkbox"
+                          id="busEntry"
+                          checked={busEntry}
+                          onChange={(e) => setBusEntry(e.target.checked)}
+                          className="h-4 w-4 text-indigo-600 focus:ring-indigo-500 border-gray-300 rounded mt-1"
+                        />
+                        <label htmlFor="busEntry" className="ml-2 block text-sm text-gray-700">
+                          Taken Factorykaam Bus Service
+                        </label>
+                      </div>
+
+                      {entryTimeError && (
+                        <div className="bg-red-50 border border-red-200 text-red-700 px-3 py-2 rounded-md mb-4">
+                          <div className="flex items-center">
+                            <AlertCircle className="h-4 w-4 mr-2 flex-shrink-0" />
+                            <span className="text-sm">{entryTimeError}</span>
+                          </div>
+                        </div>
+                      )}
+
+                      <button
+                        onClick={handleEntrySubmit}
+                        disabled={loading || !entryTimeInput.hours || !entryTimeInput.minutes || !entryDate}
+                        className="px-4 py-2 bg-indigo-600 text-white rounded-md hover:bg-indigo-700 disabled:bg-indigo-300 flex items-center justify-center"
+                      >
+                        {loading ? (
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                        ) : (
+                          'Mark Entry Time'
+                        )}
+                      </button>
+                    </>
                   )}
-                </button>
-              </div>
+                </div>
+              )}
             </div>
           </div>
         )}
@@ -768,7 +1404,7 @@ const ViewAttendance = () => {
               <div className="flex flex-col items-center text-center">
                 <CheckCircle2 className="h-12 w-12 text-green-500 mb-4" />
                 <h3 className="text-lg font-semibold mb-2">Success!</h3>
-                <p className="text-gray-600 mb-6">Exit time has been updated successfully.</p>
+                <p className="text-gray-600 mb-6">{errorMessage}</p>
                 <button
                   onClick={() => setShowSuccessModal(false)}
                   className="px-4 py-2 bg-indigo-600 text-white rounded-md hover:bg-indigo-700"
