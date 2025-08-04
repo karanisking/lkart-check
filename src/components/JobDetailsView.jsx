@@ -29,8 +29,9 @@ const JobDetailsView = ({ jobDetails, selectedSlot }) => {
   const [showError, setShowError] = useState(false);
   const [showSelfieModal, setShowSelfieModal] = useState(false);
   const [status, setStatus] = useState('');
-  const [pendingQRGeneration, setPendingQRGeneration] = useState(false); // New state
+  const [pendingQRGeneration, setPendingQRGeneration] = useState(false);
   const [showViewSelfieModal, setShowViewSelfieModal] = useState(false);
+  const [imageLoading, setImageLoading] = useState(true); // New state for image loading
   const navigate = useNavigate();
 
   const fetchAccountDetails = async () => {
@@ -51,7 +52,6 @@ const JobDetailsView = ({ jobDetails, selectedSlot }) => {
       setShowError(true);
     }
   };
-
 
   useEffect(() => {
     console.log(jobDetails);
@@ -234,10 +234,9 @@ const JobDetailsView = ({ jobDetails, selectedSlot }) => {
   const generateQR = async () => {
     try {
       // Check if profile photo exists before generating QR
-
       if (!user?.profilePhotoUrl) {
         toast.error('Please upload your profile photo first');
-        setPendingQRGeneration(true); // Set the flag
+        setPendingQRGeneration(true);
         setShowSelfieModal(true);
         return;
       }
@@ -249,7 +248,7 @@ const JobDetailsView = ({ jobDetails, selectedSlot }) => {
 
       const url = new URL(templink);
       const status = url.searchParams.get('status');
-      console.log("QR Status:", status); // This will log 'entry' or 'exit'
+      console.log("QR Status:", status);
       setStatus(status);
 
       console.log(templink);
@@ -259,6 +258,21 @@ const JobDetailsView = ({ jobDetails, selectedSlot }) => {
       setError(err instanceof Error ? err.message : 'Failed to generate QR code. Please try again.');
       setShowError(true);
     }
+  };
+
+  // Handle image load events
+  const handleImageLoad = () => {
+    setImageLoading(false);
+  };
+
+  const handleImageError = () => {
+    setImageLoading(false);
+  };
+
+  // Reset image loading state when modal opens
+  const handleViewSelfieModalOpen = () => {
+    setImageLoading(true);
+    setShowViewSelfieModal(true);
   };
 
   return (
@@ -362,7 +376,7 @@ const JobDetailsView = ({ jobDetails, selectedSlot }) => {
 
                 {(user?.aadharVerified || user?.dob) && user?.profilePhotoUrl && (
                   <button
-                    onClick={() => setShowViewSelfieModal(true)}
+                    onClick={handleViewSelfieModalOpen}
                     className="w-full py-3 px-4 border border-transparent rounded-md shadow-sm text-white bg-indigo-600 hover:bg-indigo-700 flex items-center justify-center space-x-2"
                   >
                     <Camera className="h-5 w-5" />
@@ -400,7 +414,7 @@ const JobDetailsView = ({ jobDetails, selectedSlot }) => {
                 onSuccess={handleSelfieSuccess}
                 onClose={() => {
                   setShowSelfieModal(false);
-                  setPendingQRGeneration(false); // Reset the flag when modal closes without upload
+                  setPendingQRGeneration(false);
                   if (showAadhaarModal && user?.profilePhotoUrl) {
                     setShowAadhaarModal(true);
                   }
@@ -432,7 +446,6 @@ const JobDetailsView = ({ jobDetails, selectedSlot }) => {
               </button>
 
               <div className="bg-white p-4">
-
                 <div className="text-center mb-4">
                   <p className="font-semibold text-gray-900 mb-5">{status.toUpperCase()} QR</p>
                   <QRCode value={qrlink} size={200} className="mx-auto" />
@@ -443,7 +456,6 @@ const JobDetailsView = ({ jobDetails, selectedSlot }) => {
                   <p className="text-gray-600">{jobDetails.role}</p>
                   <p className="text-gray-600">{jobDetails.address}</p>
                   <p className="text-indigo-600 font-medium">
-
                     <br />
                   </p>
                 </div>
@@ -452,11 +464,15 @@ const JobDetailsView = ({ jobDetails, selectedSlot }) => {
           </div>
         )}
 
+        {/* View Selfie Modal with Loader */}
         {showViewSelfieModal && (
           <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
             <div className="bg-white rounded-xl w-full max-w-md relative p-6">
               <button
-                onClick={() => setShowViewSelfieModal(false)}
+                onClick={() => {
+                  setShowViewSelfieModal(false);
+                  setImageLoading(true); // Reset loading state when closing
+                }}
                 className="absolute top-4 right-4 text-gray-400 hover:text-gray-600"
               >
                 <X className="h-6 w-6" />
@@ -464,11 +480,23 @@ const JobDetailsView = ({ jobDetails, selectedSlot }) => {
 
               <div className="text-center mb-4">
                 <h3 className="text-lg font-medium text-gray-900">Your Current Selfie</h3>
-                <div className="mt-4 flex justify-center">
+                <div className="mt-4 flex justify-center relative">
+                  {/* Loading Spinner */}
+                  {imageLoading && (
+                    <div className="absolute inset-0 flex items-center justify-center bg-gray-100 rounded-lg mt-4 mb-4">
+                      <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-600"></div>
+                    </div>
+                  )}
+                  
+                  {/* Image */}
                   <img
                     src={user?.profilePhotoUrl}
                     alt="Current Selfie"
-                    className="w-[230px] h-[340px] object-cover rounded-md"
+                    className={`w-full h-auto rounded-lg max-h-[80vh] object-contain transition-opacity duration-300 ${
+                      imageLoading ? 'opacity-0' : 'opacity-100'
+                    }`}
+                    onLoad={handleImageLoad}
+                    onError={handleImageError}
                   />
                 </div>
               </div>
@@ -477,6 +505,7 @@ const JobDetailsView = ({ jobDetails, selectedSlot }) => {
                 onClick={() => {
                   setShowViewSelfieModal(false);
                   setShowSelfieModal(true);
+                  setImageLoading(true); // Reset for next time
                 }}
                 className="w-full py-3 px-4 border border-transparent rounded-md shadow-sm text-white bg-indigo-600 hover:bg-indigo-700"
               >
