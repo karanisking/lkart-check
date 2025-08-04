@@ -95,12 +95,12 @@ const View = () => {
             Upload CSV
           </button>
 
-          {/* <button
+          <button
             onClick={hanldeRequestHistory}
             className="w-64 px-6 py-3 bg-blue-500 text-white rounded-lg shadow-md hover:bg-blue-600 transition-colors duration-200 focus:ring-2 focus:ring-blue-500 focus:ring-opacity-50 border-2 border-blue-500"
           >
             View Request History
-          </button> */}
+          </button>
         </div>
 
 
