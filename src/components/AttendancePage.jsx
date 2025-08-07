@@ -80,6 +80,31 @@ const AttendancePage = () => {
 
   const monthYearOptions = generateMonthYearOptions();
 
+  // Helper function to format date and time from ISO string
+  const formatDateTime = (isoString) => {
+    if (!isoString) return { date: '', time: '' };
+    
+    const dateObj = new Date(isoString);
+    
+    // Format date as "DD MMM YYYY" using UTC to avoid timezone conversion
+    const day = dateObj.getUTCDate().toString().padStart(2, '0');
+    const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 
+                       'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    const month = monthNames[dateObj.getUTCMonth()];
+    const year = dateObj.getUTCFullYear();
+    const date = `${day} ${month} ${year}`;
+    
+    // Format time in 12-hour format with AM/PM using UTC
+    let hours = dateObj.getUTCHours();
+    const minutes = dateObj.getUTCMinutes().toString().padStart(2, '0');
+    const ampm = hours >= 12 ? 'PM' : 'AM';
+    hours = hours % 12;
+    hours = hours ? hours : 12; // 0 should be 12
+    const time = `${hours}:${minutes} ${ampm}`;
+    
+    return { date, time };
+  };
+
   const fetchAttendanceData = useCallback(async (reset = false) => {
     if (fetchingRef.current || loading || (!reset && currentPage > totalPages)) return;
     
@@ -105,46 +130,29 @@ const AttendancePage = () => {
       });
   
       const result = response.data;
-      const newRecords = result.data.attendanceHistory || [];
+      const newRecords = result.data.attendance || [];
   
-      const transformedRecords = [];
-      
-      newRecords.forEach(record => {
-        if (record.entries && record.entries.length > 0) {
-          record.entries.forEach((entry, index) => {
-            const entryDate = record.date;
-            const exitDate = entry.exitDate || record.date;
-            
-            transformedRecords.push({
-              id: `${record.date}-${index}`,
-              entryDate: entryDate,
-              entryTime: entry.entryTime,
-              exitDate: exitDate,
-              exitTime: entry.exitTime,
-              workingHours: entry.hours ? entry.hours.toFixed(2) : '0.00',
-              busEntry: entry.busEntry || false,
-              busExit: entry.busExit || false,
-              haveFood: entry.haveFood || false,
-            });
-          });
-        } else {
-          transformedRecords.push({
-            id: record.date,
-            entryDate: record.date,
-            entryTime: record.firstEntry,
-            exitDate: record.date,
-            exitTime: record.lastExit,
-            workingHours: record.workingHours ? record.workingHours.toFixed(2) : '0.00',
-            busEntry: record.busEntry || false,
-            busExit: record.busExit || false,
-            haveFood: record.haveFood || false,
-          });
-        }
+      // Transform the new API response structure
+      const transformedRecords = newRecords.map(record => {
+        const entryDateTime = formatDateTime(record.entryTime);
+        const exitDateTime = formatDateTime(record.exitTime);
+        
+        return {
+          id: record.id,
+          entryDate: entryDateTime.date,
+          entryTime: entryDateTime.time,
+          exitDate: exitDateTime.date,
+          exitTime: exitDateTime.time,
+          workingHours: record.workingHours ? record.workingHours.toFixed(2) : '0.00',
+          busEntry: record.benefits?.busEntry || false,
+          busExit: record.benefits?.busExit || false,
+          haveFood: record.benefits?.hadFood || false,
+        };
       });
   
       setAttendanceData(prev => reset ? transformedRecords : [...prev, ...transformedRecords]);
-      setTotalWorkingHours(result.data.totalWorkingHours);
-      setTotalPages(result.data.pagination.totalPages);
+      setTotalWorkingHours(result.data.summary?.totalWorkingHours?.toFixed(2) || '0');
+      setTotalPages(result.data.pagination?.totalPages || 1);
       
       if (!reset) {
         setCurrentPage(prev => prev + 1);
