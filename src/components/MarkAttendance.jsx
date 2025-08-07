@@ -6,6 +6,30 @@ import axios from 'axios';
 
 const BASE_URL = process.env.REACT_APP_BASE_URL;
 
+const formatDateTime = (isoString) => {
+  if (!isoString) return { date: '', time: '' };
+  
+  const dateObj = new Date(isoString);
+  
+  // Format date as "DD MMM YYYY" using UTC to avoid timezone conversion
+  const day = dateObj.getUTCDate().toString().padStart(2, '0');
+  const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 
+                     'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+  const month = monthNames[dateObj.getUTCMonth()];
+  const year = dateObj.getUTCFullYear();
+  const date = `${day} ${month} ${year}`;
+  
+  // Format time in 12-hour format with AM/PM using UTC
+  let hours = dateObj.getUTCHours();
+  const minutes = dateObj.getUTCMinutes().toString().padStart(2, '0');
+  const ampm = hours >= 12 ? 'PM' : 'AM';
+  hours = hours % 12;
+  hours = hours ? hours : 12; // 0 should be 12
+  const time = `${hours}:${minutes} ${ampm}`;
+  
+  return { date, time };
+};
+
 const MarkAttendance = () => {
   const navigate = useNavigate();
   const location = useLocation();
@@ -25,8 +49,8 @@ const MarkAttendance = () => {
     locationValidated: false,
     busStatus: false,
     haveFood: false,
-    imageLoading: true, // Add image loading state
-    imageError: false,  // Add image error state
+    imageLoading: true,
+    imageError: false,
   });
 
   const fetchUserProfile = async (userId) => {
@@ -178,8 +202,8 @@ const MarkAttendance = () => {
           userProfile: profileData,
           showConfirmation: true,
           params: { userId, currentDay, status },
-          imageLoading: true, // Reset image loading state
-          imageError: false,  // Reset image error state
+          imageLoading: true,
+          imageError: false,
         });
       } catch (error) {
         setState({
@@ -263,7 +287,7 @@ const MarkAttendance = () => {
 
       setState(prev => ({ ...prev, status: 'loading' }));
 
-      const message = await markAttendance(
+      const response = await markAttendance(
         state.params.userId,
         state.params.currentDay,
         state.params.status,
@@ -271,13 +295,19 @@ const MarkAttendance = () => {
         state.haveFood,
       );
 
+      const { date, time } = formatDateTime(
+        state.params.status === 'entry' 
+          ? response.attendanceRecord.EntryDate 
+          : response.attendanceRecord.ExitDate
+      );
+
       setState(prev => ({
         ...prev,
         status: 'success',
         attendanceData: {
-          name: message.name,
-          date: message.attendanceRecord.date,
-          time: message.attendanceRecord.time,
+          name: response.name,
+          date,
+          time,
           location: state.userLocation,
           status: state.params.status
         }
@@ -313,7 +343,6 @@ const MarkAttendance = () => {
     }));
   };
 
-  // Handle image load success
   const handleImageLoad = () => {
     setState(prev => ({
       ...prev,
@@ -322,7 +351,6 @@ const MarkAttendance = () => {
     }));
   };
 
-  // Handle image load error
   const handleImageError = () => {
     setState(prev => ({
       ...prev,
@@ -402,10 +430,10 @@ const MarkAttendance = () => {
               
               {/* Profile Image with Loader */}
               {state.userProfile?.profile_photo ? (
-                <div className="relative">
+                <div className="relative w-full max-w-md mb-4">
                   {/* Image Loader */}
                   {state.imageLoading && (
-                    <div className="absolute inset-0 flex items-center justify-center bg-gray-100 mt-4 mb-4 rounded-lg min-h-[200px]">
+                    <div className="absolute inset-0 flex items-center justify-center bg-gray-100 rounded-lg min-h-[200px]">
                       <div className="flex flex-col items-center space-y-2">
                         <Loader2 className="h-8 w-8 animate-spin text-indigo-600" />
                         <span className="text-sm text-gray-500">Loading image...</span>
@@ -417,12 +445,12 @@ const MarkAttendance = () => {
                   <img
                     src={
                       state.userProfile.profile_photo.startsWith("data:image") ||
-                      state.userProfile.profile_photo.startsWith("https://fk-offerletters.s3.ap-south-1.amazonaws.com/")
+                      state.userProfile.profile_photo.startsWith("https://")
                         ? state.userProfile.profile_photo
                         : `data:image/jpeg;base64,${state.userProfile.profile_photo}`
                     }
                     alt="Profile"
-                    className={`w-full h-auto rounded-lg max-h-[51vh] object-contain ${
+                    className={`w-full h-auto rounded-lg max-h-[51vh] object-contain p-4 ${
                       state.imageLoading ? 'opacity-0' : 'opacity-100'
                     } transition-opacity duration-300`}
                     onLoad={handleImageLoad}
@@ -447,10 +475,10 @@ const MarkAttendance = () => {
                 </div>
               )}
               
-              <h2 className="text-xl font-semibold text-gray-800">
+              <h2 className="text-xl font-semibold text-gray-800 mb-2">
                 Name: {state.userProfile?.name}
               </h2>
-              <h2 className="text-xl font-semibold text-gray-800">
+              <h2 className="text-xl font-semibold text-gray-800 mb-4">
                 Department: {state.userProfile?.department}
               </h2>
              
@@ -462,9 +490,7 @@ const MarkAttendance = () => {
                   className="h-5 w-5 text-green-600 rounded"
                 />
                 <span className="ml-2 text-gray-700">
-                  {state.params?.status === 'entry' 
-                    ? 'Taken Factorykaam Bus Service' 
-                    : 'Taken Factorykaam Bus Service'}
+                  Taken Factorykaam Bus Service
                 </span>
               </div>
               
@@ -530,14 +556,7 @@ const MarkAttendance = () => {
                 <tr>
                   <td className="border border-gray-200 px-4 py-2">{state.attendanceData.name}</td>
                   <td className="border border-gray-200 px-4 py-2">{state.attendanceData.date}</td>
-                  <td className="border border-gray-200 px-4 py-2">
-                    {new Date(state.attendanceData.time).toLocaleTimeString('en-US', {
-                      hour: '2-digit',
-                      minute: '2-digit',
-                      hour12: true,
-                      timeZone: 'UTC'
-                    })}
-                  </td>
+                  <td className="border border-gray-200 px-4 py-2">{state.attendanceData.time}</td>
                 </tr>
               </tbody>
             </table>
