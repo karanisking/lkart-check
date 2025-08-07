@@ -558,7 +558,7 @@ const ViewAttendance = () => {
       const response = await axios.post(
         `${BASE_URL}/lenskart-admin/update-department`,
         {
-          workerId: selectedRecord.userId,
+          attendanceId: selectedRecord.attendanceId,
           department: selectedDepartment
         },
         {
@@ -618,9 +618,9 @@ const ViewAttendance = () => {
 
       const payload = {
         userId: selectedRecord.userId,
+        attendanceId: selectedRecord.attendanceId,
         date: exitDate,
         status: 'exit',
-        adminPhone: selectedRecord.adminPhone,
         exitTime: exitDateTime,
         busExit: busExit,
         haveFood: haveFood
@@ -688,7 +688,6 @@ const ViewAttendance = () => {
         userId: workerDetails.userId,
         date: entryDate,
         status: 'entry',
-        adminPhone: "+919325859487",
         entryTime: entryDateTime,
         busEntry: busEntry
       };
