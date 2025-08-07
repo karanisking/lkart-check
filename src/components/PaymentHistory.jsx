@@ -80,6 +80,31 @@ const PaymentHistory = () => {
     }
   };
 
+  // Updated formatDateTime function
+  const formatDateTime = (isoString) => {
+    if (!isoString) return { date: '', time: '' };
+    
+    const dateObj = new Date(isoString);
+    
+    // Format date as "DD MMM YYYY" using UTC to avoid timezone conversion
+    const day = dateObj.getUTCDate().toString().padStart(2, '0');
+    const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 
+                       'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    const month = monthNames[dateObj.getUTCMonth()];
+    const year = dateObj.getUTCFullYear();
+    const date = `${day} ${month} ${year}`;
+    
+    // Format time in 12-hour format with AM/PM using UTC
+    let hours = dateObj.getUTCHours();
+    const minutes = dateObj.getUTCMinutes().toString().padStart(2, '0');
+    const ampm = hours >= 12 ? 'PM' : 'AM';
+    hours = hours % 12;
+    hours = hours ? hours : 12; // 0 should be 12
+    const time = `${hours}:${minutes} ${ampm}`;
+    
+    return { date, time };
+  };
+
   const fetchPayments = useCallback(async (page = 1, reset = false) => {
     if (loading) return;
 
@@ -168,34 +193,6 @@ const PaymentHistory = () => {
     }
   };
 
-  const formatDateTime = (dateTimeStr) => {
-    if (!dateTimeStr) return { date: '-', time: '-' };
-    
-    // Extract time directly from the string (HH:MM:SS)
-    const timePart = dateTimeStr.split('T')[1]?.split('.')[0] || '';
-    const [hours, minutes] = timePart.split(':');
-    
-    // Convert to 12-hour format
-    let hour12 = parseInt(hours, 10);
-    const ampm = hour12 >= 12 ? 'pm' : 'am';
-    hour12 = hour12 % 12;
-    hour12 = hour12 ? hour12 : 12; // Convert 0 to 12
-    const formattedTime = `${hour12}:${minutes} ${ampm}`;
-  
-    // Format date (25 Jul 2025)
-    const date = new Date(dateTimeStr);
-    const formattedDate = date.toLocaleDateString('en-GB', {
-      day: 'numeric',
-      month: 'short',
-      year: 'numeric'
-    });
-    
-    return {
-      date: formattedDate,
-      time: formattedTime
-    };
-  };
-
   const renderEmptyState = () => (
     <div className="text-center py-8">
       <p className="text-gray-400">
@@ -213,7 +210,7 @@ const PaymentHistory = () => {
 
         <div className="bg-pink-50 p-4 rounded-xl mb-6">
           <p className="text-gray-700">Total Amount Paid</p>
-          <p className="text-2xl font-bold ">₹ {summary.totalAmount.toFixed(2)}</p>
+          <p className="text-2xl font-bold ">₹ {summary.totalNetAmount?.toFixed(2) || summary.totalAmount?.toFixed(2) || '0.00'}</p>
           <p className="text-sm text-gray-600">
             Account Number: {formatAccountNumber(accountDetails.accountNumber)}
           </p>
@@ -237,34 +234,34 @@ const PaymentHistory = () => {
           ) : (
             <>
               {payments.map(payment => {
-                const entry = payment.entries && payment.entries.length > 0 ? payment.entries[0] : null;
-                const entryData = entry ? formatDateTime(entry.entryTime) : formatDateTime(null);
-                const exitData = entry ? formatDateTime(entry.exitTime) : formatDateTime(null);
+                // Use the new structure - entryTime and exitTime are directly on payment
+                const entryData = formatDateTime(payment.entryTime);
+                const exitData = formatDateTime(payment.exitTime);
                 
                 return (
-                  <div key={payment._id} className="bg-gray-50 rounded-lg p-4 shadow">
+                  <div key={payment.id || payment._id} className="bg-gray-50 rounded-lg p-4 shadow">
                     <div className="flex justify-between items-center pb-2">
                       <div>
                         <p className="text-gray-600 text-xs mb-1">Transaction ID/Reference Number</p>
-                        <p className="font-medium">{payment.transaction ? payment.transaction : "-"}</p>
+                        <p className="font-medium">{ payment.referenceId || "-"}</p>
                       </div>
                       <p className="text-lg font-semibold text-gray-900 mt-2">
-                        ₹{payment.amount.toLocaleString()}
+                        ₹{(payment.netAmount || payment.amount || 0).toLocaleString()}
                       </p>
                     </div>
                     <div className="flex justify-between items-center pt-2 text-sm text-gray-600">
                       <div className="space-y-1">
                         <p className="text-gray-600 text-sm">Entry Date & Time</p>
                         <div>
-                          <p className="font-semibold text-gray-900">{entryData.date}</p>
-                          <p className="font-semibold text-gray-900">{entryData.time}</p>
+                          <p className="font-semibold text-gray-900">{entryData.date || '-'}</p>
+                          <p className="font-semibold text-gray-900">{entryData.time || '-'}</p>
                         </div>
                       </div>
                       <div className="space-y-1">
                         <p className="text-gray-600 text-sm">Exit Date & Time</p>
                         <div>
-                          <p className="font-semibold text-gray-900">{exitData.date}</p>
-                          <p className="font-semibold text-gray-900">{exitData.time}</p>
+                          <p className="font-semibold text-gray-900">{exitData.date || '-'}</p>
+                          <p className="font-semibold text-gray-900">{exitData.time || '-'}</p>
                         </div>
                       </div>
                       <div>
@@ -274,6 +271,7 @@ const PaymentHistory = () => {
                         </p>
                       </div>
                     </div>
+                    
                   </div>
                 );
               })}
