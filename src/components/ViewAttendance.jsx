@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { Loader2, LogOut, X, CheckCircle2, AlertCircle, Bus, UtensilsCrossed, LogIn } from 'lucide-react';
+import { Loader2, LogOut, X, CheckCircle2, AlertCircle, Bus, UtensilsCrossed, LogIn, Edit } from 'lucide-react';
 import axios from "axios";
 import { useNavigate } from "react-router-dom";
 
@@ -218,7 +218,7 @@ const ViewAttendance = () => {
 
     // Only allow today or yesterday's date
     if (selectedDate.getTime() !== todayDate.getTime() &&
-        selectedDate.getTime() !== yesterdayDate.getTime()) {
+      selectedDate.getTime() !== yesterdayDate.getTime()) {
       setEntryTimeError('Entry date must be today or yesterday');
       return false;
     }
@@ -339,22 +339,43 @@ const ViewAttendance = () => {
         setDepartments(filteredDepartments);
       }
 
-      // Then set the record and open modal
+      // Set the record and open modal
       setSelectedRecord(record);
       setSelectedDepartment(record.department || '');
 
-      const defaultDate = record.exitDate ? record.exitDate.split('T')[0] : record.entryDate.split('T')[0];
-      setExitDate(defaultDate);
+      // Pre-fill exit date and time if available
+      setExitDate(record.exitDate || record.entryDate.split('T')[0]);
+
+      if (record.exitTime) {
+        // Extract time from exitTime (e.g., "2025-08-07T12:09:00.000Z" -> "12:09:00")
+        const timePart = record.exitTime.split('T')[1].split('.')[0]; // "12:09:00"
+        const [hours, minutes] = timePart.split(':'); // ["12", "09"]
+        let hourNum = parseInt(hours);
+        const period = hourNum >= 12 ? 'PM' : 'AM';
+        if (hourNum > 12) {
+          hourNum -= 12;
+        } else if (hourNum === 0) {
+          hourNum = 12;
+        }
+        setTimeInput({
+          hours: hourNum.toString(),
+          minutes: minutes,
+          period: period
+        });
+      } else {
+        setTimeInput({
+          hours: '',
+          minutes: '',
+          period: 'PM'
+        });
+      }
+
+      // Pre-fill busExit and haveFood
+      setBusExit(record.busExit || false);
+      setHaveFood(record.haveFood || false);
+      setExitTimeError('');
 
       setShowExitModal(true);
-      setTimeInput({
-        hours: '',
-        minutes: '',
-        period: 'PM'
-      });
-      setBusExit(false);
-      setHaveFood(false);
-      setExitTimeError('');
     } catch (error) {
       console.error("Error fetching departments:", error);
       setErrorMessage("Failed to load departments");
@@ -904,7 +925,7 @@ const ViewAttendance = () => {
         {showTable && !fetchError && (
           <div className="w-full max-h-[70vh] overflow-y-auto">
             <table className="w-full text-sm border-collapse">
-              <thead className="sticky top-0 bg-white shadow-md">
+              <thead className="sticky top-0 bg-white shadow-md z-10">
                 <tr className="bg-gray-100">
                   <th className="p-2 text-left">Name <br /> (Phone No.)</th>
                   <th className="p-2 text-center">Entry Date <br /> & Time</th>
@@ -959,37 +980,52 @@ const ViewAttendance = () => {
                         <div className="flex items-center justify-center gap-1">
                           <div className="font-medium">{formatDateToDisplay(record.entryDate)}</div>
                           {record.busEntry && (
-                            <Bus className=" h-4 w-4 text-[#3D5A80]" title="Used bus service for entry" />
+                            <Bus className="h-4 w-4 text-[#3D5A80]" title="Used bus service for entry" />
                           )}
                         </div>
-                        <div className=" ml-2 text-xs text-gray-600">{formatTimeToIST(record.entryTime)}</div>
+                        <div className="ml-2 text-xs text-gray-600">{formatTimeToIST(record.entryTime)}</div>
                       </td>
                       <td className="p-2 text-center">
-                        <div className="flex flex-col items-center gap-1">
-                          <div className="flex items-center justify-center gap-1">
-                            <div className="font-medium">{formatDateToDisplay(record.exitDate)}</div>
-                            {record.exitTime && record.busExit && (
-                              <Bus className="ml-1 h-4 w-4 text-[#3D5A80]" title="Used bus service for exit" />
-                            )}
-                          </div>
-                          <div className="flex items-center gap-1">
-                            {record.exitTime ? (
-                              <>
-                                <span className="text-xs text-gray-600">{formatTimeToIST(record.exitTime)}</span>
-                                {record.haveFood && (
-                                  <UtensilsCrossed className="ml-1 h-4 w-4 text-[#F4A261]" title="Availed food service" />
-                                )}
-                              </>
-                            ) : (
-                              <LogOut
-                                className="h-4 w-4 text-black cursor-pointer hover:text-gray-700"
-                                onClick={(e) => handleExitClick(record, e)}
-                                title="Mark Exit Time"
-                              />
-                            )}
-                          </div>
-                        </div>
-                      </td>
+  <div className="flex items-center justify-center gap-2">
+    {/* Left side - Date and Time rows */}
+    <div className="flex flex-col items-center">
+      {/* Date row with bus icon */}
+      <div className="flex items-center justify-center gap-1">
+        <div className="font-medium">{formatDateToDisplay(record.exitDate)}</div>
+        {record.exitTime && record.busExit && (
+          <Bus className="h-4 w-4 text-[#3D5A80]" title="Used bus service for exit" />
+        )}
+      </div>
+      
+      {/* Time row with food icon */}
+      <div className="flex items-center justify-center gap-1">
+        {record.exitTime ? (
+          <>
+            <span className="text-xs text-gray-600">{formatTimeToIST(record.exitTime)}</span>
+            {record.haveFood && (
+              <UtensilsCrossed className="h-4 w-4 text-[#F4A261]" title="Availed food service" />
+            )}
+          </>
+        ) : (
+          <LogOut
+            className="h-4 w-4 text-black cursor-pointer hover:text-gray-700"
+            onClick={(e) => handleExitClick(record, e)}
+            title="Mark Exit Time"
+          />
+        )}
+      </div>
+    </div>
+
+    {/* Right side - Modify icon centered vertically */}
+    {record.exitTime && record.payment?.status?.toLowerCase() === 'pending' && (
+      <Edit
+        className="h-4 w-4 text-black cursor-pointer hover:text-gray-700"
+        onClick={(e) => handleExitClick(record, e)}
+        title="Modify Exit Time"
+      />
+    )}
+  </div>
+</td>
                       <td className="p-2 text-center">
                         <div className="flex flex-col items-center gap-1">
                           <span className={`px-2 py-0.5 rounded-full text-xs ${getPaymentStatusColor(record.payment?.status)}`}>
@@ -1113,7 +1149,6 @@ const ViewAttendance = () => {
                           </div>
                         )}
                       </div>
-
                     </div>
                     <button
                       onClick={handleDepartmentUpdate}
