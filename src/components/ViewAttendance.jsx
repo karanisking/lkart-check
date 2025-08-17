@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { Loader2, LogOut, X, CheckCircle2, AlertCircle, Bus, UtensilsCrossed, LogIn, Edit } from 'lucide-react';
+import { Loader2, LogOut, X, CheckCircle2, AlertCircle, Bus, UtensilsCrossed, LogIn, Edit, CreditCard, Banknote } from 'lucide-react';
 import axios from "axios";
 import { useNavigate } from "react-router-dom";
 
@@ -61,9 +61,18 @@ const ViewAttendance = () => {
   const [exitTimeError, setExitTimeError] = useState('');
   const [entryTimeError, setEntryTimeError] = useState('');
 
+  // New state for shown info
+  const [shownInfoId, setShownInfoId] = useState(null);
+
   const observer = useRef();
   const loadingRef = useRef(null);
   const isInitialMount = useRef(true);
+
+const [tooltipPosition, setTooltipPosition] = useState({ x: 0, y: 0 });
+const [tooltipVisible, setTooltipVisible] = useState(false);
+const [tooltipContent, setTooltipContent] = useState(null);
+const [activeTooltipId, setActiveTooltipId] = useState(null);
+const [isTooltipPinned, setIsTooltipPinned] = useState(false);
 
   const BASE_URL = process.env.REACT_APP_BASE_URL;
 
@@ -118,6 +127,8 @@ const ViewAttendance = () => {
         return 'bg-green-100 text-green-800';
       case 'pending':
         return 'bg-yellow-100 text-yellow-800';
+      case 'payoutgenerated':
+        return 'bg-blue-100 text-blue-800';
       case 'failed':
         return 'bg-red-100 text-red-800';
       default:
@@ -161,6 +172,33 @@ const ViewAttendance = () => {
 
     checkTokenValidity();
   }, [navigate, verifyTokenWithAuth]);
+
+ 
+
+  const showTooltip = (e, record, isPinned = false) => {
+    const rect = e.target.closest('.tooltip-trigger').getBoundingClientRect();
+    setTooltipPosition({
+      x: rect.left + rect.width / 2 - 25,
+      y: rect.top - 10
+    });
+    setTooltipContent({
+      referenceId: record.payment?.referenceId || 'N/A',
+      remarks: record.payment?.remark || record.payment?.transactionRemarks || 'N/A'
+    });
+    setTooltipVisible(true);
+    setActiveTooltipId(record.attendanceId);
+    setIsTooltipPinned(isPinned);
+  };
+  
+  // Helper function to hide tooltip (only if not pinned)
+  const hideTooltip = () => {
+    if (!isTooltipPinned) {
+      setTooltipVisible(false);
+      setTooltipContent(null);
+      setActiveTooltipId(null);
+    }
+  };
+  
 
   const validateDates = () => {
     if (fromDate && toDate) {
@@ -213,8 +251,9 @@ const ViewAttendance = () => {
 
     const now = new Date();
     const selectedDate = new Date(entryDate);
-    const todayDate = new Date(today);
-    const yesterdayDate = new Date(yesterday);
+    const todayDate = new Date(now.toISOString().split('T')[0]);
+    const yesterdayDate = new Date(todayDate);
+    yesterdayDate.setDate(yesterdayDate.getDate() - 1);
 
     // Only allow today or yesterday's date
     if (selectedDate.getTime() !== todayDate.getTime() &&
@@ -231,6 +270,11 @@ const ViewAttendance = () => {
         entryTimeInput.period
       );
       const entryDateTime = new Date(`${entryDate}T${time24h}.000Z`);
+
+      if (entryDateTime > now) {
+        setEntryTimeError('Entry time cannot be in the future');
+        return false;
+      }
     }
 
     setEntryTimeError('');
@@ -264,24 +308,28 @@ const ViewAttendance = () => {
         if (isNewSearch) {
           setAttendanceData(result.data);
           setShowTable(true);
-          // Initialize loading states for new images
-          const initialLoadingStates = {};
-          result.data.forEach(record => {
-            if (record.profilePhotoUrl) {
-              initialLoadingStates[record.profilePhotoUrl] = true;
-            }
+          // Preserve existing loading states and clean up unused ones
+          setImageLoadingStates(prev => {
+            const newLoadingStates = {};
+            result.data.forEach(record => {
+              if (record.profilePhotoUrl) {
+                newLoadingStates[record.profilePhotoUrl] = prev[record.profilePhotoUrl] ?? true;
+              }
+            });
+            return newLoadingStates;
           });
-          setImageLoadingStates(initialLoadingStates);
         } else {
           setAttendanceData((prev) => [...prev, ...result.data]);
-          // Add loading states for new images
-          const newLoadingStates = {};
-          result.data.forEach(record => {
-            if (record.profilePhotoUrl) {
-              newLoadingStates[record.profilePhotoUrl] = true;
-            }
+          // Add loading states for new images only
+          setImageLoadingStates(prev => {
+            const newLoadingStates = { ...prev };
+            result.data.forEach(record => {
+              if (record.profilePhotoUrl && !(record.profilePhotoUrl in newLoadingStates)) {
+                newLoadingStates[record.profilePhotoUrl] = true;
+              }
+            });
+            return newLoadingStates;
           });
-          setImageLoadingStates(prev => ({ ...prev, ...newLoadingStates }));
         }
         setHasMore(result.data.length > 0 && page < result.pagination.totalPages);
       } else {
@@ -411,7 +459,7 @@ const ViewAttendance = () => {
 
       const response = await axios.post(
         `${BASE_URL}/lenskart-admin/phone-details`,
-        { phone: "91" + phoneInput },
+        { phone: phoneInput },
         {
           headers: {
             Authorization: `Bearer ${token}`,
@@ -745,6 +793,19 @@ const ViewAttendance = () => {
   };
 
   const handleRowClick = (userId) => {
+
+    // Check if any tooltip is currently active
+    if (activeTooltipId) {
+    
+      setActiveTooltipId(null);
+      setTooltipVisible(false);
+      setTooltipContent(null);
+  
+      setIsTooltipPinned(false);
+      return;
+    }
+    
+    // No active tooltips, proceed with navigation
     saveStateToStorage(userId);
   };
 
@@ -757,12 +818,8 @@ const ViewAttendance = () => {
   // Set default entry date when modal opens
   useEffect(() => {
     if (showEntryModal) {
-      const today = new Date();
-      const yesterday = new Date(today);
-      yesterday.setDate(yesterday.getDate() - 1);
-      const currentHour = today.getHours();
-      const defaultDate = currentHour < 12 ? today.toISOString().split('T')[0] : yesterday.toISOString().split('T')[0];
-      setEntryDate(defaultDate);
+      const today = new Date().toISOString().split('T')[0];
+      setEntryDate(today);
     }
   }, [showEntryModal]);
 
@@ -779,14 +836,6 @@ const ViewAttendance = () => {
 
   const { today, yesterday } = getAllowedDates();
 
-  // Set default entry date when modal opens
-  useEffect(() => {
-    if (showEntryModal) {
-      // Always default to today's date
-      setEntryDate(today);
-    }
-  }, [showEntryModal, today]);
-
   // Handle image load completion
   const handleImageLoad = (photoUrl) => {
     setImageLoadingStates(prev => ({
@@ -796,8 +845,8 @@ const ViewAttendance = () => {
   };
 
   return (
-    <div className="min-h-screen overflow-y-auto pt-16 bg-gray-100 p-0">
-      <div className="max-w-6xl mx-auto bg-white shadow-lg rounded-lg p-4">
+    <div className="min-h-screen overflow-y-auto pt-16 bg-gray-100 p-0 z-2">
+      <div className="max-w-6xl mx-auto bg-white shadow-lg rounded-lg p-4 overflow-visible">
         <h2 className="text-2xl font-bold mb-4 text-center">View Attendance</h2>
 
         <div className="mb-4">
@@ -923,9 +972,9 @@ const ViewAttendance = () => {
         )}
 
         {showTable && !fetchError && (
-          <div className="w-full max-h-[70vh] overflow-y-auto">
-            <table className="w-full text-sm border-collapse">
-              <thead className="sticky top-0 bg-white shadow-md z-10">
+          <div className="w-full max-h-[70vh] overflow-y-auto overflow-x-auto relative">
+            <table className="w-full text-sm border-collapse min-w-[640px]">
+              <thead className="sticky top-0 bg-white shadow-md z-10 overflow-visible">
                 <tr className="bg-gray-100">
                   <th className="p-2 text-left">Name <br /> (Phone No.)</th>
                   <th className="p-2 text-center">Entry Date <br /> & Time</th>
@@ -943,7 +992,7 @@ const ViewAttendance = () => {
                 ) : attendanceData.length > 0 ? (
                   attendanceData.map((record, index) => (
                     <tr
-                      key={index}
+                      key={record.attendanceId}
                       ref={index === attendanceData.length - 1 ? lastElementRef : null}
                       className="border-b hover:bg-gray-50 cursor-pointer"
                       onClick={() => handleRowClick(record.userId)}
@@ -965,7 +1014,11 @@ const ViewAttendance = () => {
                                   e.stopPropagation();
                                   openPhotoModal(record.profilePhotoUrl);
                                 }}
-                                onLoad={() => handleImageLoad(record.profilePhotoUrl)}
+                                onLoad={(e) => {
+                                  if (e.target.complete) {
+                                    handleImageLoad(record.profilePhotoUrl);
+                                  }
+                                }}
                                 onError={() => handleImageLoad(record.profilePhotoUrl)}
                               />
                             </div>
@@ -973,6 +1026,11 @@ const ViewAttendance = () => {
                           <div className="ml-2">
                             <div className="font-medium">{record.name}</div>
                             <div className="text-xs text-gray-500">{record.phone}</div>
+                          </div>
+                          <div className="ml-2">
+                            {(record?.haveAccount === false) && (
+                              <AlertCircle className="w-4 h-4 text-red-500" title="Bank account not added" />
+                            )}
                           </div>
                         </div>
                       </td>
@@ -986,56 +1044,108 @@ const ViewAttendance = () => {
                         <div className="ml-2 text-xs text-gray-600">{formatTimeToIST(record.entryTime)}</div>
                       </td>
                       <td className="p-2 text-center">
-  <div className="flex items-center justify-center gap-2">
-    {/* Left side - Date and Time rows */}
-    <div className="flex flex-col items-center">
-      {/* Date row with bus icon */}
-      <div className="flex items-center justify-center gap-1">
-        <div className="font-medium">{formatDateToDisplay(record.exitDate)}</div>
-        {record.exitTime && record.busExit && (
-          <Bus className="h-4 w-4 text-[#3D5A80]" title="Used bus service for exit" />
-        )}
-      </div>
-      
-      {/* Time row with food icon */}
-      <div className="flex items-center justify-center gap-1">
-        {record.exitTime ? (
-          <>
-            <span className="text-xs text-gray-600">{formatTimeToIST(record.exitTime)}</span>
-            {record.haveFood && (
-              <UtensilsCrossed className="h-4 w-4 text-[#F4A261]" title="Availed food service" />
-            )}
-          </>
-        ) : (
-          <LogOut
-            className="h-4 w-4 text-black cursor-pointer hover:text-gray-700"
-            onClick={(e) => handleExitClick(record, e)}
-            title="Mark Exit Time"
-          />
-        )}
-      </div>
-    </div>
-
-    {/* Right side - Modify icon centered vertically */}
-    {record.exitTime && record.payment?.status?.toLowerCase() === 'pending' && (
-      <Edit
-        className="h-4 w-4 text-black cursor-pointer hover:text-gray-700"
-        onClick={(e) => handleExitClick(record, e)}
-        title="Modify Exit Time"
-      />
-    )}
-  </div>
-</td>
-                      <td className="p-2 text-center">
-                        <div className="flex flex-col items-center gap-1">
-                          <span className={`px-2 py-0.5 rounded-full text-xs ${getPaymentStatusColor(record.payment?.status)}`}>
-                            ₹{record.payment?.amount}
-                          </span>
-                          <span className="text-xs text-gray-500">
-                            {record.workingHours?.toFixed(2) || '0.00'} hrs
-                          </span>
+                        <div className="flex items-center justify-center gap-2">
+                          <div className="flex flex-col items-center">
+                            <div className="flex items-center justify-center gap-1">
+                              <div className="font-medium">{formatDateToDisplay(record.exitDate)}</div>
+                              {record.exitTime && record.busExit && (
+                                <Bus className="h-4 w-4 text-[#3D5A80]" title="Used bus service for exit" />
+                              )}
+                            </div>
+                            <div className="flex items-center justify-center gap-1">
+                              {record.exitTime ? (
+                                <>
+                                  <span className="text-xs text-gray-600">{formatTimeToIST(record.exitTime)}</span>
+                                  {record.haveFood && (
+                                    <UtensilsCrossed className="h-4 w-4 text-[#F4A261]" title="Availed food service" />
+                                  )}
+                                </>
+                              ) : (
+                                <LogOut
+                                  className="h-4 w-4 text-black cursor-pointer hover:text-gray-700"
+                                  onClick={(e) => handleExitClick(record, e)}
+                                  title="Mark Exit Time"
+                                />
+                              )}
+                            </div>
+                          </div>
+                          {record.exitTime && record.payment?.status?.toLowerCase() === 'pending' && (
+                            <Edit
+                              className="h-4 w-4 text-black cursor-pointer hover:text-gray-700"
+                              onClick={(e) => handleExitClick(record, e)}
+                              title="Modify Exit Time"
+                            />
+                          )}
                         </div>
                       </td>
+                      <td className="p-2 text-center">
+  <div className="flex flex-col items-center gap-1">
+    <div className="flex items-center justify-center w-auto mx-auto relative">
+      {/* Payment amount */}
+      <span
+        className={`px-2 py-0.5 rounded-full text-xs ${getPaymentStatusColor(record.payment?.status)}`}
+      >
+        ₹{record.payment?.amount}
+      </span>
+
+      {/* Info icon with dual hover+click tooltip */}
+      {(record.payment?.status?.toLowerCase() === 'failed' ||
+        record.payment?.status?.toLowerCase() === 'success') && (
+        <div
+          className="ml-1 relative tooltip-trigger"
+          onMouseEnter={(e) => {
+            // Show on hover only if not already pinned for this record
+            if (!isTooltipPinned || activeTooltipId !== record.attendanceId) {
+              showTooltip(e, record, false);
+            }
+          }}
+          onMouseLeave={() => {
+            // Hide on mouse leave only if not pinned
+            hideTooltip();
+          }}
+          onClick={(e) => {
+            e.stopPropagation();
+            
+            // Handle click behavior
+            if (activeTooltipId === record.attendanceId && isTooltipPinned) {
+              // If clicking the same pinned tooltip, unpin/hide it
+              setTooltipVisible(false);
+              setTooltipContent(null);
+              setActiveTooltipId(null);
+              setIsTooltipPinned(false);
+            } else {
+              // Pin the tooltip on click
+              showTooltip(e, record, true);
+            }
+          }}
+        >
+          <svg
+            xmlns="http://www.w3.org/2000/svg"
+            className={`h-4 w-4 cursor-pointer transition-colors ${
+              activeTooltipId === record.attendanceId && isTooltipPinned 
+                ? 'text-blue-800' 
+                : 'text-blue-600 hover:text-blue-800'
+            }`}
+            fill="none"
+            viewBox="0 0 24 24"
+            stroke="currentColor"
+          >
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              strokeWidth={2}
+              d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+            />
+          </svg>
+        </div>
+      )}
+    </div>
+
+    <span className="text-xs text-gray-500">
+      {record.workingHours?.toFixed(2) || '0.00'} hrs
+    </span>
+  </div>
+</td>
                     </tr>
                   ))
                 ) : (
@@ -1469,6 +1579,31 @@ const ViewAttendance = () => {
           </div>
         )}
       </div>
+
+      {tooltipVisible && tooltipContent && (
+  <div
+    className={`fixed z-[9999]  mr-4 p-3 text-xs bg-white shadow-xl rounded-lg border border-gray-200  max-w-[170px] transition-opacity duration-200 ${
+      isTooltipPinned ? 'pointer-events-auto' : 'pointer-events-none'
+    }`}
+    style={{
+      left: tooltipPosition.x,
+      top: tooltipPosition.y,
+      transform: 'translate(-50%, -100%)'
+    }}
+  >
+    <div className="break-words">
+      <strong className="text-gray-800">Reference ID :</strong>
+      <span className="text-gray-600 ml-1">{tooltipContent.referenceId}</span>
+    </div>
+    <div className="break-words mt-2">
+      <strong className="text-gray-800">Remarks :</strong>
+      <span className="text-gray-600 ml-1">{tooltipContent.remarks}</span>
+    </div>
+  
+    <div className="absolute top-full left-1/2 transform -translate-x-1/2 border-4 border-transparent border-t-white"></div>
+    <div className="absolute top-full left-1/2 transform -translate-x-1/2 border-4 border-transparent border-t-gray-200 mt-[-1px]"></div>
+  </div>
+)}
     </div>
   );
 };
