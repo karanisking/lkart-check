@@ -1,7 +1,30 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { Loader2, LogOut, X, CheckCircle2, AlertCircle, Bus, UtensilsCrossed, LogIn, Edit, CreditCard, Banknote } from 'lucide-react';
+import { Loader2, LogOut, X, CheckCircle2, AlertCircle, Bus, UtensilsCrossed, LogIn, Edit, CreditCard, Banknote, Info } from 'lucide-react';
 import axios from "axios";
 import { useNavigate } from "react-router-dom";
+
+const useOutsideClick = (callback) => {
+  const ref = useRef();
+
+  useEffect(() => {
+    const handleClick = (event) => {
+      if (ref.current && !ref.current.contains(event.target)) {
+        callback();
+      }
+    };
+
+    document.addEventListener('mousedown', handleClick);
+    document.addEventListener('touchstart', handleClick);
+
+    return () => {
+      document.removeEventListener('mousedown', handleClick);
+      document.removeEventListener('touchstart', handleClick);
+    };
+  }, [callback]);
+
+  return ref;
+};
+
 
 const ViewAttendance = () => {
   const navigate = useNavigate();
@@ -13,6 +36,7 @@ const ViewAttendance = () => {
   const [hasMore, setHasMore] = useState(true);
   const [showTable, setShowTable] = useState(false);
   const [dateError, setDateError] = useState('');
+  const [retryingPayments, setRetryingPayments] = useState({});
 
   // Photo modal states
   const [showPhotoModal, setShowPhotoModal] = useState(false);
@@ -34,6 +58,7 @@ const ViewAttendance = () => {
   const [departments, setDepartments] = useState([]);
   const [selectedDepartment, setSelectedDepartment] = useState('');
   const [isDeptOpen, setIsDeptOpen] = useState(false);
+  const [isDeptOpen1, setIsDeptOpen1] = useState(false);
 
   // Entry modal states
   const [showEntryModal, setShowEntryModal] = useState(false);
@@ -64,17 +89,44 @@ const ViewAttendance = () => {
   // New state for shown info
   const [shownInfoId, setShownInfoId] = useState(null);
 
+  const [showConfirmationModal, setShowConfirmationModal] = useState(false);
+  const [selectedAttendanceId, setSelectedAttendanceId] = useState(null);
+
+
   const observer = useRef();
   const loadingRef = useRef(null);
   const isInitialMount = useRef(true);
 
-const [tooltipPosition, setTooltipPosition] = useState({ x: 0, y: 0 });
-const [tooltipVisible, setTooltipVisible] = useState(false);
-const [tooltipContent, setTooltipContent] = useState(null);
-const [activeTooltipId, setActiveTooltipId] = useState(null);
-const [isTooltipPinned, setIsTooltipPinned] = useState(false);
+  const [tooltipPosition, setTooltipPosition] = useState({ x: 0, y: 0 });
+  const [tooltipVisible, setTooltipVisible] = useState(false);
+  const [tooltipContent, setTooltipContent] = useState(null);
+  const [activeTooltipId, setActiveTooltipId] = useState(null);
+  const [isTooltipPinned, setIsTooltipPinned] = useState(false);
+
+  const [attendanceDownloadLoading, setAttendanceDownloadLoading] = useState(false);
+  const [downloadError, setDownloadError] = useState('');
+  const [showDownloadErrorModal, setShowDownloadErrorModal] = useState(false);
+
+
 
   const BASE_URL = process.env.REACT_APP_BASE_URL;
+
+  // Payment status states
+  const [selectedPaymentStatuses, setSelectedPaymentStatuses] = useState([]);
+  const [isPaymentOpen11, setIsPaymentOpen11] = useState(false);
+  const [isPaymentOpen12, setIsPaymentOpen12] = useState(false);
+  const [isDeptOpen11, setIsDeptOpen11] = useState(false);
+  const [isDeptOpen12, setIsDeptOpen12] = useState(false);
+  const paymentOptions = ['Pending', 'Success', 'Payout Generated', 'Failed'];
+  const paymentStatusMap = {
+    'Pending': 'pending',
+    'Success': 'success',
+    'Payout Generated': 'payout_generated',
+    'Failed': 'failed'
+  };
+
+  // Multi-select states
+  const [selectedDepartments, setSelectedDepartments] = useState([]);
 
   const openPhotoModal = (photoUrl) => {
     setSelectedPhoto(photoUrl);
@@ -88,6 +140,53 @@ const [isTooltipPinned, setIsTooltipPinned] = useState(false);
     setIsModalImageLoading(false);
   };
 
+  const departmentDropdownRef = useOutsideClick(() => {
+    if (isDeptOpen) setIsDeptOpen(false);
+  });
+
+  const departmentDropdownRef1 = useOutsideClick(() => {
+    if (isDeptOpen11) setIsDeptOpen11(false);
+  });
+
+  const departmentDropdownRef2 = useOutsideClick(() => {
+    if (isDeptOpen12) setIsDeptOpen12(false);
+  });
+
+
+
+  const paymentDropdownRef1 = useOutsideClick(() => {
+    if (isPaymentOpen11) setIsPaymentOpen11(false);
+  });
+
+  const paymentDropdownRef2 = useOutsideClick(() => {
+    if (isPaymentOpen12) setIsPaymentOpen12(false);
+  });
+  const toggleDepartmentDropdown = () => {
+
+    setIsDeptOpen(prev => !prev);
+  };
+
+  const toggleDepartmentDropdown1 = () => {
+    setIsPaymentOpen11(false); // Close payment dropdown when opening department
+    setIsDeptOpen11(prev => !prev);
+  };
+
+  const toggleDepartmentDropdown2 = () => {
+    setIsPaymentOpen12(false); // Close payment dropdown when opening department
+    setIsDeptOpen12(prev => !prev);
+  };
+
+
+  const togglePaymentDropdown1 = () => {
+    setIsDeptOpen11(false); // Close department dropdown when opening payment
+    setIsPaymentOpen11(prev => !prev);
+  };
+
+  const togglePaymentDropdown2 = () => {
+    setIsDeptOpen12(false); // Close department dropdown when opening payment
+    setIsPaymentOpen12(prev => !prev);
+  };
+
   const saveStateToStorage = (userId) => {
     const stateToSave = {
       fromDate,
@@ -98,7 +197,7 @@ const [isTooltipPinned, setIsTooltipPinned] = useState(false);
       showTable
     };
     localStorage.setItem('attendanceFilterState', JSON.stringify(stateToSave));
-    navigate(`/lkart/superadmin/view-rating/${userId}`);
+    navigate(`/lkart/superadmin/attendance-history/${userId}`);
   };
 
   useEffect(() => {
@@ -173,7 +272,7 @@ const [isTooltipPinned, setIsTooltipPinned] = useState(false);
     checkTokenValidity();
   }, [navigate, verifyTokenWithAuth]);
 
- 
+
 
   const showTooltip = (e, record, isPinned = false) => {
     const rect = e.target.closest('.tooltip-trigger').getBoundingClientRect();
@@ -189,7 +288,7 @@ const [isTooltipPinned, setIsTooltipPinned] = useState(false);
     setActiveTooltipId(record.attendanceId);
     setIsTooltipPinned(isPinned);
   };
-  
+
   // Helper function to hide tooltip (only if not pinned)
   const hideTooltip = () => {
     if (!isTooltipPinned) {
@@ -198,7 +297,7 @@ const [isTooltipPinned, setIsTooltipPinned] = useState(false);
       setActiveTooltipId(null);
     }
   };
-  
+
 
   const validateDates = () => {
     if (fromDate && toDate) {
@@ -245,33 +344,74 @@ const [isTooltipPinned, setIsTooltipPinned] = useState(false);
   };
 
   const validateEntryDateTime = () => {
-    if (!entryDate || !entryTimeInput.hours || !entryTimeInput.minutes) {
-      return false;
-    }
+    // For new entries (when selectedRecord is null), use current validation
+    if (!selectedRecord) {
+      if (!entryDate || !entryTimeInput.hours || !entryTimeInput.minutes) {
+        return false;
+      }
 
-    const now = new Date();
-    const selectedDate = new Date(entryDate);
-    const todayDate = new Date(now.toISOString().split('T')[0]);
-    const yesterdayDate = new Date(todayDate);
-    yesterdayDate.setDate(yesterdayDate.getDate() - 1);
-
-    // Only allow today or yesterday's date
-    if (selectedDate.getTime() !== todayDate.getTime() &&
-      selectedDate.getTime() !== yesterdayDate.getTime()) {
-      setEntryTimeError('Entry date must be today or yesterday');
-      return false;
-    }
-
-    // Validate time is not in the future if date is today
-    if (selectedDate.getTime() === todayDate.getTime()) {
+      // For new entries, validate not in future
       const time24h = convertTo24HourWithSeconds(
         entryTimeInput.hours,
         entryTimeInput.minutes.padStart(2, '0'),
         entryTimeInput.period
       );
-      const entryDateTime = new Date(`${entryDate}T${time24h}.000Z`);
 
-      if (entryDateTime > now) {
+      // Create entryDateTime in UTC
+      const now = new Date();
+
+      const nowIST = new Date(now.getTime()); // Convert to IST
+      const currentHours = nowIST.getHours();
+      const currentMinutes = nowIST.getMinutes();
+      const currentTime24h = `${currentHours.toString().padStart(2, '0')}:${currentMinutes.toString().padStart(2, '0')}:00`;
+
+
+      if (time24h > currentTime24h && entryDate === now.toISOString().split('T')[0]) {
+        setEntryTimeError('Entry time cannot be in the future');
+        return false;
+      }
+
+
+      return true;
+    }
+
+    // For editing existing entries (when selectedRecord exists)
+    if (!entryDate || !entryTimeInput.hours || !entryTimeInput.minutes) {
+      return false;
+    }
+
+    const originalEntryDate = new Date(selectedRecord.entryDate);
+    const selectedDate = new Date(entryDate);
+
+    // Calculate yesterday from original entry date
+    const yesterdayDate = new Date(originalEntryDate);
+    yesterdayDate.setDate(yesterdayDate.getDate() - 1);
+
+    // Only allow the original entry date or the day before
+    if (selectedDate.getTime() !== originalEntryDate.getTime() &&
+      selectedDate.getTime() !== yesterdayDate.getTime()) {
+      setEntryTimeError('Entry date must be the original date or the day before');
+      return false;
+    }
+
+    // Validate time is not in the future if date is the original entry date
+    if (selectedDate.getTime() === originalEntryDate.getTime()) {
+      const time24h = convertTo24HourWithSeconds(
+        entryTimeInput.hours,
+        entryTimeInput.minutes.padStart(2, '0'),
+        entryTimeInput.period
+      );
+
+      // Create entryDateTime in UTC
+      const now = new Date();
+
+      const nowIST = new Date(now.getTime()); // Convert to IST
+      const currentHours = nowIST.getHours();
+      const currentMinutes = nowIST.getMinutes();
+      const currentTime24h = `${currentHours.toString().padStart(2, '0')}:${currentMinutes.toString().padStart(2, '0')}:00`;
+
+
+      if (time24h > currentTime24h && entryDate === now.toISOString().split('T')[0]) {
         setEntryTimeError('Entry time cannot be in the future');
         return false;
       }
@@ -288,14 +428,24 @@ const [isTooltipPinned, setIsTooltipPinned] = useState(false);
 
       const token = localStorage.getItem("superadmintoken");
 
+      const params = {
+        page: page,
+        startDate: fromDate,
+        endDate: toDate
+      };
+
+      if (selectedDepartments.length > 0) {
+        params.department = selectedDepartments.join(',');
+      }
+
+      if (selectedPaymentStatuses.length > 0) {
+        params.payment = selectedPaymentStatuses.map(s => paymentStatusMap[s]).join(',');
+      }
+
       const response = await axios.get(
         `${BASE_URL}/lenskart-admin/attendance/history`,
         {
-          params: {
-            page: page,
-            startDate: fromDate,
-            endDate: toDate,
-          },
+          params,
           headers: {
             Authorization: `Bearer ${token}`,
           },
@@ -364,11 +514,120 @@ const [isTooltipPinned, setIsTooltipPinned] = useState(false);
     }
   };
 
-  const handleExitClick = async (record, e) => {
+  const downloadAttendanceData = async () => {
+    try {
+      setAttendanceDownloadLoading(true);
+
+      const token = localStorage.getItem("superadmintoken");
+
+      const params = {
+        startDate: fromDate,
+        endDate: toDate
+      };
+
+      if (selectedDepartments.length > 0) {
+        params.department = selectedDepartments.join(',');
+      }
+
+      if (selectedPaymentStatuses.length > 0) {
+        params.payment = selectedPaymentStatuses.map(s => paymentStatusMap[s]).join(',');
+      }
+
+      const response = await axios.get(
+        `${BASE_URL}/lenskart-admin/attendance-history/download`,
+        {
+          params,
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+          responseType: 'blob',
+        }
+      );
+
+      // Create blob and download
+      const blob = new Blob([response.data], { type: 'text/csv' });
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+
+      // Generate filename with current date
+      const currentDate = new Date().toISOString().split('T')[0];
+      link.download = `attendance-history-${currentDate}.csv`;
+
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      window.URL.revokeObjectURL(url);
+
+    } catch (error) {
+      console.error("Error downloading attendance data:", error);
+
+      let errorMsg = "Error downloading attendance data. Please try again.";
+
+      if (error.response?.data?.message) {
+        errorMsg = error.response.data.message;
+      }
+
+      // Use existing error modal instead of fetchError
+      setErrorMessage(errorMsg);
+      setShowErrorModal(true);
+
+    } finally {
+      setAttendanceDownloadLoading(false);
+    }
+  };
+
+
+
+  const handleEntryClick = async (record, e) => {
     e.stopPropagation();
 
     try {
       setLoading(true);
+      // Set the record and open modal (same as exit approach)
+      setSelectedRecord(record);
+
+      // Pre-fill entry date and time from the record data
+      setEntryDate(record.entryDate.split("T")[0]);
+
+      if (record.entryTime) {
+        const timePart = record.entryTime.split("T")[1].split(".")[0];
+        const [hours, minutes] = timePart.split(":");
+        let hourNum = parseInt(hours);
+        const period = hourNum >= 12 ? "PM" : "AM";
+        if (hourNum > 12) {
+          hourNum -= 12;
+        } else if (hourNum === 0) {
+          hourNum = 12;
+        }
+        setEntryTimeInput({
+          hours: hourNum.toString(),
+          minutes: minutes,
+          period: period,
+        });
+      }
+
+      // Pre-fill busEntry
+      setBusEntry(record.busEntry || false);
+      setEntryTimeError("");
+
+      // Open entry modal
+      setShowEntryModal(true);
+    } catch (error) {
+      console.error("Error preparing entry edit:", error);
+      setErrorMessage("Failed to load entry details");
+      setShowErrorModal(true);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+
+  const handleExitClick = async (record, e) => {
+    e.stopPropagation();
+
+    try {
+
       // Fetch departments first
       const token = localStorage.getItem("superadmintoken");
       const response = await axios.get(
@@ -606,6 +865,76 @@ const [isTooltipPinned, setIsTooltipPinned] = useState(false);
     }
   };
 
+  const handleEntryUpdate = async () => {
+    if (!entryTimeInput.hours || !entryTimeInput.minutes) {
+      setErrorMessage("Please enter both hours and minutes");
+      setShowErrorModal(true);
+      return;
+    }
+
+    if (!entryDate) {
+      setErrorMessage("Please select an entry date");
+      setShowErrorModal(true);
+      return;
+    }
+
+    if (!validateEntryDateTime()) {
+      return;
+    }
+
+    try {
+      setLoading(true);
+      const token = localStorage.getItem("superadmintoken");
+
+      const time24h = convertTo24HourWithSeconds(
+        entryTimeInput.hours,
+        entryTimeInput.minutes.padStart(2, "0"),
+        entryTimeInput.period
+      );
+
+      const entryDateTime = new Date(`${entryDate}T${time24h}.000Z`).toISOString();
+
+      // Use the same endpoint as exit update but with entry parameters
+      const payload = {
+        attendanceId: selectedRecord.attendanceId,
+        entryDate: entryDateTime, // Changed from exitTime to entryTime
+        busEntry: busEntry, // Changed from busExit to busEntry
+        // Removed haveFood completely as requested
+      };
+
+      const response = await axios.post(
+        `${BASE_URL}/lenskart-admin/update-entry`,
+        payload,
+        {
+          headers: {
+            Authorization: `Bearer ${token}`,
+            "Content-Type": "application/json",
+          },
+        }
+      );
+
+      if (response.data.success) {
+        setErrorMessage("Entry time has been updated successfully");
+        setShowSuccessModal(true);
+        setShowEntryModal(false);
+        setSelectedRecord(null);
+        fetchAttendanceData(1, true);
+      } else {
+        setErrorMessage(response.data.message || "Failed to update entry time");
+        setShowErrorModal(true);
+      }
+    } catch (error) {
+      console.error('Error updating entry time:', error);
+      setErrorMessage(
+        error.response?.data?.message ||
+        "Error updating entry time. Please try again."
+      );
+      setShowErrorModal(true);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const handleExitDateChange = (e) => {
     setExitDate(e.target.value);
     if (exitTimeError) {
@@ -796,15 +1125,15 @@ const [isTooltipPinned, setIsTooltipPinned] = useState(false);
 
     // Check if any tooltip is currently active
     if (activeTooltipId) {
-    
+
       setActiveTooltipId(null);
       setTooltipVisible(false);
       setTooltipContent(null);
-  
+
       setIsTooltipPinned(false);
       return;
     }
-    
+
     // No active tooltips, proceed with navigation
     saveStateToStorage(userId);
   };
@@ -817,11 +1146,11 @@ const [isTooltipPinned, setIsTooltipPinned] = useState(false);
 
   // Set default entry date when modal opens
   useEffect(() => {
-    if (showEntryModal) {
+    if (showEntryModal && !selectedRecord) {
       const today = new Date().toISOString().split('T')[0];
       setEntryDate(today);
     }
-  }, [showEntryModal]);
+  }, [showEntryModal, selectedRecord]);
 
   // Get today and yesterday dates for limiting calendar
   const getAllowedDates = () => {
@@ -844,6 +1173,159 @@ const [isTooltipPinned, setIsTooltipPinned] = useState(false);
     }));
   };
 
+
+  const handlePending = async (attendanceId, e) => {
+    e.stopPropagation();
+
+    // Show confirmation modal instead of directly making API call
+    setSelectedAttendanceId(attendanceId);
+    setShowConfirmationModal(true);
+  };
+
+  const confirmPendingUpdate = async () => {
+    if (!selectedAttendanceId) return;
+
+    try {
+      setRetryingPayments(prev => ({ ...prev, [selectedAttendanceId]: true }));
+
+      const token = localStorage.getItem("superadmintoken");
+      const response = await axios.post(
+        `${BASE_URL}/lenskart-admin/update-payment-status`,
+        {
+          shiftId: selectedAttendanceId,
+          status: 'pending'
+        },
+        {
+          headers: {
+            Authorization: `Bearer ${token}`,
+            'Content-Type': 'application/json'
+          }
+        }
+      );
+
+      if (response.data.success) {
+        // Update the attendance data to reflect the new status
+        setAttendanceData(prevData =>
+          prevData.map(record =>
+            record.attendanceId === selectedAttendanceId
+              ? {
+                ...record,
+                payment: {
+                  ...record.payment,
+                  status: 'pending'
+                }
+              }
+              : record
+          )
+        );
+
+        setErrorMessage('Payment status updated to pending successfully');
+        setShowSuccessModal(true);
+      } else {
+        setErrorMessage(response.data.message || 'Failed to update payment status');
+        setShowErrorModal(true);
+      }
+    } catch (error) {
+      console.error('Error updating payment status:', error);
+      setErrorMessage(error.response?.data?.message || 'Error updating payment status. Please try again.');
+      setShowErrorModal(true);
+    } finally {
+      setRetryingPayments(prev => {
+        const newState = { ...prev };
+        delete newState[selectedAttendanceId];
+        return newState;
+      });
+      setShowConfirmationModal(false);
+      setSelectedAttendanceId(null);
+    }
+  };
+
+  const cancelPendingUpdate = () => {
+    setShowConfirmationModal(false);
+    setSelectedAttendanceId(null);
+  };
+
+  // Fetch departments on component mount
+  useEffect(() => {
+    const fetchDepartments = async () => {
+      try {
+        const token = localStorage.getItem("superadmintoken");
+        const response = await axios.get(
+          `${BASE_URL}/lenskart/department`,
+          {
+            headers: {
+              Authorization: `Bearer ${token}`,
+              "Content-Type": "application/json",
+            },
+          }
+        );
+
+        if (response.data.success && Array.isArray(response.data.departments)) {
+          const filteredDepartments = response.data.departments.filter(dept => dept !== "All");
+          setDepartments(filteredDepartments);
+        }
+      } catch (error) {
+        console.error("Error fetching departments:", error);
+      }
+    };
+
+    fetchDepartments();
+  }, [BASE_URL]);
+
+
+
+  // Toggle department selection
+  const toggleDepartment = (dept) => {
+    setSelectedDepartments(prev =>
+      prev.includes(dept) ? prev.filter(d => d !== dept) : [...prev, dept]
+    );
+  };
+
+  // Select all departments
+  const handleSelectAllDepartments = () => {
+    if (selectedDepartments.length === departments.length) {
+      setSelectedDepartments([]);
+    } else {
+      setSelectedDepartments([...departments]);
+    }
+  };
+
+  // Toggle payment status selection
+  const togglePaymentStatus = (status) => {
+    setSelectedPaymentStatuses(prev =>
+      prev.includes(status) ? prev.filter(s => s !== status) : [...prev, status]
+    );
+  };
+
+  // Select all payment statuses
+  const handleSelectAllPayments = () => {
+    if (selectedPaymentStatuses.length === paymentOptions.length) {
+      setSelectedPaymentStatuses([]);
+    } else {
+      setSelectedPaymentStatuses([...paymentOptions]);
+    }
+  };
+
+  // Button text for departments
+  const departmentButtonText =
+    selectedDepartments.length === 0
+      ? 'Select Department'
+      : selectedDepartments.length === departments.length
+        ? 'All Departments'
+        : selectedDepartments.length > 2
+          ? `${selectedDepartments.length} selected`
+          : selectedDepartments.join(', ');
+
+  // Button text for payment statuses
+  const paymentButtonText =
+    selectedPaymentStatuses.length === 0
+      ? 'Select Payment Status'
+      : selectedPaymentStatuses.length === paymentOptions.length
+        ? 'All Statuses'
+        : selectedPaymentStatuses.length > 2
+          ? `${selectedPaymentStatuses.length} selected`
+          : selectedPaymentStatuses.join(', ');
+
   return (
     <div className="min-h-screen overflow-y-auto pt-16 bg-gray-100 p-0 z-2">
       <div className="max-w-6xl mx-auto bg-white shadow-lg rounded-lg p-4 overflow-visible">
@@ -851,65 +1333,173 @@ const [isTooltipPinned, setIsTooltipPinned] = useState(false);
 
         <div className="mb-4">
           {/* Desktop/Tablet Layout (sm and above) */}
-          <div className="hidden sm:block">
-            <div className="flex gap-2 mb-2">
-              <div className="flex-1">
-                <label className="text-sm text-gray-600 mb-1 block">From:</label>
-                <input
-                  type="date"
-                  value={fromDate}
-                  onChange={(e) => {
-                    setFromDate(e.target.value);
-                    setDateError('');
-                  }}
-                  className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded-md"
-                />
-              </div>
+          <div className="hidden md:flex gap-2 mb-2">
+            <div className="flex-1">
+              <label className="text-sm text-gray-600 mb-1 block">From Date <span className="text-red-500">*</span></label>
+              <input
+                type="date"
+                value={fromDate}
+                onChange={(e) => {
+                  setFromDate(e.target.value);
+                  setDateError('');
+                }}
+                className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded-md"
+              />
+            </div>
 
-              <div className="flex-1">
-                <label className="text-sm text-gray-600 mb-1 block">To:</label>
-                <input
-                  type="date"
-                  value={toDate}
-                  onChange={(e) => {
-                    setToDate(e.target.value);
-                    setDateError('');
-                  }}
-                  className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded-md"
-                />
-              </div>
+            <div className="flex-1">
+              <label className="text-sm text-gray-600 mb-1 block">To Date <span className="text-red-500">*</span></label>
+              <input
+                type="date"
+                value={toDate}
+                onChange={(e) => {
+                  setToDate(e.target.value);
+                  setDateError('');
+                }}
+                className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded-md"
+              />
+            </div>
 
-              <div className="flex items-end">
+            <div className="flex-1 relative">
+              <label className="text-sm text-gray-600 mb-1 block">Select Department</label>
+              <div className="relative" ref={departmentDropdownRef1}>
                 <button
-                  onClick={handleApply}
-                  disabled={!fromDate || !toDate || loading}
-                  className="px-4 py-1.5 bg-indigo-600 text-white text-sm rounded-md hover:bg-indigo-700 disabled:bg-indigo-300 disabled:cursor-not-allowed flex items-center justify-center gap-1"
+                  onClick={toggleDepartmentDropdown1}
+                  className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md text-left flex justify-between items-center"
                 >
-                  {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : (
-                    <>
-                      <span>Apply</span>
-                    </>
-                  )}
+                  {departmentButtonText}
+                  <svg
+                    className={`h-4 w-4 transform transition-transform ${isDeptOpen11 ? "rotate-180" : ""}`}
+                    xmlns="http://www.w3.org/2000/svg"
+                    viewBox="0 0 20 20"
+                    fill="currentColor"
+                  >
+                    <path
+                      fillRule="evenodd"
+                      d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z"
+                      clipRule="evenodd"
+                    />
+                  </svg>
                 </button>
+
+                {isDeptOpen11 && (
+                  <div className="absolute z-[9999] mt-1 w-full bg-white shadow-lg rounded-md py-1 max-h-48 overflow-auto border border-gray-300">
+                    <label className="flex items-center px-4 py-2 text-sm text-gray-700 hover:bg-indigo-100">
+                      <input
+                        type="checkbox"
+                        checked={selectedDepartments.length === departments.length}
+                        onChange={handleSelectAllDepartments}
+                        className="mr-2"
+                      />
+                      Select All
+                    </label>
+                    {departments.map((dept, index) => (
+                      <label
+                        key={index}
+                        className={`flex items-center px-4 py-2 text-sm hover:bg-indigo-100 ${selectedDepartments.includes(dept)
+                          ? "bg-indigo-50 text-indigo-700"
+                          : "text-gray-700"
+                          }`}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={selectedDepartments.includes(dept)}
+                          onChange={() => toggleDepartment(dept)}
+                          className="mr-2"
+                        />
+                        {dept}
+                      </label>
+                    ))}
+                  </div>
+                )}
               </div>
             </div>
 
-            <div className="flex justify-start">
+            {/* <div className="flex-1 relative">
+              <label className="text-sm text-gray-600 mb-1 block">Select Payment Status</label>
+              <div className="relative" ref={paymentDropdownRef1}>
+                <button
+                  onClick={togglePaymentDropdown1}
+                  className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md text-left flex justify-between items-center"
+                >
+                  {paymentButtonText}
+                  <svg
+                    className={`h-4 w-4 transform transition-transform ${isPaymentOpen11 ? "rotate-180" : ""}`}
+                    xmlns="http://www.w3.org/2000/svg"
+                    viewBox="0 0 20 20"
+                    fill="currentColor"
+                  >
+                    <path
+                      fillRule="evenodd"
+                      d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z"
+                      clipRule="evenodd"
+                    />
+                  </svg>
+                </button>
+
+                {isPaymentOpen11 && (
+                  <div className="absolute z-[9999] mt-1 w-full bg-white shadow-lg rounded-md py-1 max-h-48 overflow-auto border border-gray-300">
+                    <label className="flex items-center px-4 py-2 text-sm text-gray-700 hover:bg-indigo-100">
+                      <input
+                        type="checkbox"
+                        checked={selectedPaymentStatuses.length === paymentOptions.length}
+                        onChange={handleSelectAllPayments}
+                        className="mr-2"
+                      />
+                      Select All
+                    </label>
+                    {paymentOptions.map((status, index) => (
+                      <label
+                        key={index}
+                        className={`flex items-center px-4 py-2 text-sm hover:bg-indigo-100 ${selectedPaymentStatuses.includes(status)
+                            ? "bg-indigo-50 text-indigo-700"
+                            : "text-gray-700"
+                          }`}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={selectedPaymentStatuses.includes(status)}
+                          onChange={() => togglePaymentStatus(status)}
+                          className="mr-2"
+                        />
+                        {status}
+                      </label>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div> */}
+
+            <div className="flex items-end">
               <button
-                onClick={() => setShowEntryModal(true)}
-                className="px-4 py-1.5 bg-green-600 text-white text-sm rounded-md hover:bg-green-700 flex items-center justify-center gap-1"
+                onClick={handleApply}
+                disabled={!fromDate || !toDate || loading}
+                className="px-4 py-1.5 bg-indigo-600 text-white text-sm rounded-md hover:bg-indigo-700 disabled:bg-indigo-300 disabled:cursor-not-allowed flex items-center justify-center gap-1"
               >
-                <LogIn className="h-4 w-4" />
-                <span>Mark Entry</span>
+                {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : (
+                  <>
+                    <span>Apply</span>
+                  </>
+                )}
               </button>
             </div>
           </div>
 
+          <div className="hidden md:flex justify-start">
+            <button
+              onClick={() => setShowEntryModal(true)}
+              className="px-4 py-1.5 bg-green-600 text-white text-sm rounded-md hover:bg-green-700 flex items-center justify-center gap-1"
+            >
+              <LogIn className="h-4 w-4" />
+              <span>Mark Entry</span>
+            </button>
+          </div>
+
           {/* Mobile Layout (below sm) */}
-          <div className="block sm:hidden">
-            <div className="flex gap-2 mb-2">
-              <div className="flex-1">
-                <label className="text-sm text-gray-600 mb-1 block">From:</label>
+          <div className="block md:hidden">
+            <div className="grid grid-cols-2 gap-2 mb-2">
+              <div>
+                <label className="text-sm text-gray-600 mb-1 block">From Date<span className="text-red-500">*</span></label>
                 <input
                   type="date"
                   value={fromDate}
@@ -921,8 +1511,8 @@ const [isTooltipPinned, setIsTooltipPinned] = useState(false);
                 />
               </div>
 
-              <div className="flex-1">
-                <label className="text-sm text-gray-600 mb-1 block">To:</label>
+              <div>
+                <label className="text-sm text-gray-600 mb-1 block">To Date<span className="text-red-500">*</span></label>
                 <input
                   type="date"
                   value={toDate}
@@ -933,6 +1523,120 @@ const [isTooltipPinned, setIsTooltipPinned] = useState(false);
                   className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded-md"
                 />
               </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-2 mb-2">
+              <div className="relative">
+                <label className="text-sm text-gray-600 mb-1 block">Select Department</label>
+                <div className="relative" ref={departmentDropdownRef2}>
+                  <button
+                    onClick={() => setIsDeptOpen12(!isDeptOpen12)}
+                    className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md text-left flex justify-between items-center"
+                  >
+                    {departmentButtonText}
+                    <svg
+                      className={`h-4 w-4 transform transition-transform ${isDeptOpen12 ? "rotate-180" : ""
+                        }`}
+                      xmlns="http://www.w3.org/2000/svg"
+                      viewBox="0 0 20 20"
+                      fill="currentColor"
+                    >
+                      <path
+                        fillRule="evenodd"
+                        d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z"
+                        clipRule="evenodd"
+                      />
+                    </svg>
+                  </button>
+
+                  {isDeptOpen12 && (
+                    <div className="absolute z-[9999] mt-1 w-full bg-white shadow-lg rounded-md py-1 max-h-48 overflow-auto border border-gray-300">
+                      <label className="flex items-center px-4 py-2 text-sm text-gray-700 hover:bg-indigo-100">
+                        <input
+                          type="checkbox"
+                          checked={selectedDepartments.length === departments.length}
+                          onChange={handleSelectAllDepartments}
+                          className="mr-2"
+                        />
+                        Select All
+                      </label>
+                      {departments.map((dept, index) => (
+                        <label
+                          key={index}
+                          className={`flex items-center px-4 py-2 text-sm hover:bg-indigo-100 ${selectedDepartments.includes(dept)
+                            ? "bg-indigo-50 text-indigo-700"
+                            : "text-gray-700"
+                            }`}
+                        >
+                          <input
+                            type="checkbox"
+                            checked={selectedDepartments.includes(dept)}
+                            onChange={() => toggleDepartment(dept)}
+                            className="mr-2"
+                          />
+                          {dept}
+                        </label>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* <div className="relative">
+                <label className="text-sm text-gray-600 mb-1 block">Select Payment Status</label>
+                <div className="relative" >
+                  <button
+                    onClick={() => setIsPaymentOpen12(!isPaymentOpen12)}
+                    className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md text-left flex justify-between items-center"
+                  >
+                    {paymentButtonText}
+                    <svg
+                      className={`h-4 w-4 transform transition-transform ${isPaymentOpen12 ? "rotate-180" : ""
+                        }`}
+                      xmlns="http://www.w3.org/2000/svg"
+                      viewBox="0 0 20 20"
+                      fill="currentColor"
+                    >
+                      <path
+                        fillRule="evenodd"
+                        d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z"
+                        clipRule="evenodd"
+                      />
+                    </svg>
+                  </button>
+
+                  {isPaymentOpen12 && (
+                    <div className="absolute z-[9999] mt-1 w-full bg-white shadow-lg rounded-md py-1 max-h-48 overflow-auto border border-gray-300">
+                      <label className="flex items-center px-4 py-2 text-sm text-gray-700 hover:bg-indigo-100">
+                        <input
+                          type="checkbox"
+                          checked={selectedPaymentStatuses.length === paymentOptions.length}
+                          onChange={handleSelectAllPayments}
+                          className="mr-2"
+                        />
+                        Select All
+                      </label>
+                      {paymentOptions.map((status, index) => (
+                        <label
+                          key={index}
+                          className={`flex items-center px-4 py-2 text-sm hover:bg-indigo-100 ${selectedPaymentStatuses.includes(status)
+                              ? "bg-indigo-50 text-indigo-700"
+                              : "text-gray-700"
+                            }`}
+                        >
+                          <input
+                            type="checkbox"
+                            checked={selectedPaymentStatuses.includes(status)}
+                            onChange={() => togglePaymentStatus(status)}
+                            className="mr-2"
+                          />
+                          {status}
+                        </label>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div> */}
             </div>
 
             <div className="flex justify-between">
@@ -962,6 +1666,25 @@ const [isTooltipPinned, setIsTooltipPinned] = useState(false);
           <div className="text-red-500 text-sm mb-2">{dateError}</div>
         )}
 
+        {dateError && (
+          <div className="text-red-500 text-sm mb-2">{dateError}</div>
+        )}
+
+        <div className="flex justify-end mb-4">
+  <button
+    onClick={downloadAttendanceData}
+    disabled={!fromDate || !toDate || attendanceDownloadLoading}
+    className="px-4 py-1.5 bg-blue-600 text-white text-sm rounded-md hover:bg-blue-700 disabled:bg-blue-300 disabled:cursor-not-allowed flex items-center justify-center gap-1"
+  >
+    {attendanceDownloadLoading ? (
+      <Loader2 className="h-4 w-4 animate-spin" />
+    ) : (
+      <span>Download Attendance</span>
+    )}
+  </button>
+</div>
+
+
         {fetchError && (
           <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-md mb-4">
             <div className="flex items-center">
@@ -971,21 +1694,25 @@ const [isTooltipPinned, setIsTooltipPinned] = useState(false);
           </div>
         )}
 
+
         {showTable && !fetchError && (
           <div className="w-full max-h-[70vh] overflow-y-auto overflow-x-auto relative">
-            <table className="w-full text-sm border-collapse min-w-[640px]">
-              <thead className="sticky top-0 bg-white shadow-md z-10 overflow-visible">
+            <table className="w-full text-sm border-collapse ">
+              <thead className="sticky top-0 bg-white shadow-md z-[50] overflow-visible">
                 <tr className="bg-gray-100">
+
                   <th className="p-2 text-left">Name <br /> (Phone No.)</th>
+                  <th className="p-2 text-center">Department</th>
                   <th className="p-2 text-center">Entry Date <br /> & Time</th>
                   <th className="p-2 text-center">Exit Date <br /> & Time</th>
+
                   <th className="p-2 text-center">Payment <br /> (Working Hr.)</th>
                 </tr>
               </thead>
               <tbody>
                 {loading && currentPage === 1 ? (
                   <tr>
-                    <td colSpan="4" className="text-center p-4">
+                    <td colSpan="5" className="text-center p-4">
                       <Loader2 className="h-6 w-6 animate-spin mx-auto" />
                     </td>
                   </tr>
@@ -995,10 +1722,15 @@ const [isTooltipPinned, setIsTooltipPinned] = useState(false);
                       key={record.attendanceId}
                       ref={index === attendanceData.length - 1 ? lastElementRef : null}
                       className="border-b hover:bg-gray-50 cursor-pointer"
-                      onClick={() => handleRowClick(record.userId)}
                     >
-                      <td className="p-2 text-left min-w-[140px]">
+
+                      <td className="p-2 text-left min-w-[140px]" onClick={() => handleRowClick(record.userId)}>
                         <div className="flex items-center">
+                          {record.serialNumber && (
+                            <div className="mr-3">
+                              {record.serialNumber}.
+                            </div>
+                          )}
                           {record.profilePhotoUrl && (
                             <div className="relative w-12 h-12">
                               {imageLoadingStates[record.profilePhotoUrl] && (
@@ -1034,14 +1766,38 @@ const [isTooltipPinned, setIsTooltipPinned] = useState(false);
                           </div>
                         </div>
                       </td>
+                      <td className="p-2 text-center">{record.department}</td>
                       <td className="p-2 text-center">
-                        <div className="flex items-center justify-center gap-1">
-                          <div className="font-medium">{formatDateToDisplay(record.entryDate)}</div>
-                          {record.busEntry && (
-                            <Bus className="h-4 w-4 text-[#3D5A80]" title="Used bus service for entry" />
-                          )}
+                        <div className="flex items-center justify-center gap-2">
+                          <div className="flex flex-col items-center">
+                            <div className="flex items-center justify-center gap-1">
+                              <div className="font-medium">
+                                {formatDateToDisplay(record.entryDate)}
+                              </div>
+                              {record.busEntry && (
+                                <Bus
+                                  className="h-4 w-4 text-[#3D5A80]"
+                                  title="Used bus service for entry"
+                                />
+                              )}
+                            </div>
+                            <div className="flex items-center justify-center gap-1">
+                              <span className="text-xs text-gray-600">
+                                {formatTimeToIST(record.entryTime)}
+                              </span>
+                            </div>
+                          </div>
+                          {/* EDIT ICON FOR ENTRY TIME - Only shows when entryTime exists AND payment is pending */}
+                          {record.entryTime &&
+                            record.payment?.status?.toLowerCase() ===
+                            "pending" && (
+                              <Edit
+                                className="h-4 w-4 text-black cursor-pointer hover:text-gray-700"
+                                onClick={(e) => handleEntryClick(record, e)}
+                                title="Modify Entry Time"
+                              />
+                            )}
                         </div>
-                        <div className="ml-2 text-xs text-gray-600">{formatTimeToIST(record.entryTime)}</div>
                       </td>
                       <td className="p-2 text-center">
                         <div className="flex items-center justify-center gap-2">
@@ -1078,79 +1834,100 @@ const [isTooltipPinned, setIsTooltipPinned] = useState(false);
                           )}
                         </div>
                       </td>
+
                       <td className="p-2 text-center">
-  <div className="flex flex-col items-center gap-1">
-    <div className="flex items-center justify-center w-auto mx-auto relative">
-      {/* Payment amount */}
-      <span
-        className={`px-2 py-0.5 rounded-full text-xs ${getPaymentStatusColor(record.payment?.status)}`}
-      >
-        ₹{record.payment?.amount}
-      </span>
+                        <div className="flex flex-col items-center gap-1">
+                          <div className="flex items-center justify-center w-auto mx-auto relative">
 
-      {/* Info icon with dual hover+click tooltip */}
-      {(record.payment?.status?.toLowerCase() === 'failed' ||
-        record.payment?.status?.toLowerCase() === 'success') && (
-        <div
-          className="ml-1 relative tooltip-trigger"
-          onMouseEnter={(e) => {
-            // Show on hover only if not already pinned for this record
-            if (!isTooltipPinned || activeTooltipId !== record.attendanceId) {
-              showTooltip(e, record, false);
-            }
-          }}
-          onMouseLeave={() => {
-            // Hide on mouse leave only if not pinned
-            hideTooltip();
-          }}
-          onClick={(e) => {
-            e.stopPropagation();
-            
-            // Handle click behavior
-            if (activeTooltipId === record.attendanceId && isTooltipPinned) {
-              // If clicking the same pinned tooltip, unpin/hide it
-              setTooltipVisible(false);
-              setTooltipContent(null);
-              setActiveTooltipId(null);
-              setIsTooltipPinned(false);
-            } else {
-              // Pin the tooltip on click
-              showTooltip(e, record, true);
-            }
-          }}
-        >
-          <svg
-            xmlns="http://www.w3.org/2000/svg"
-            className={`h-4 w-4 cursor-pointer transition-colors ${
-              activeTooltipId === record.attendanceId && isTooltipPinned 
-                ? 'text-blue-800' 
-                : 'text-blue-600 hover:text-blue-800'
-            }`}
-            fill="none"
-            viewBox="0 0 24 24"
-            stroke="currentColor"
-          >
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              strokeWidth={2}
-              d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
-            />
-          </svg>
-        </div>
-      )}
-    </div>
+                            <span
+                              className={`px-2 py-0.5 rounded-full text-xs ${getPaymentStatusColor(record.payment?.status)}`}
+                            >
+                              ₹{record.payment?.amount}
+                            </span>
 
-    <span className="text-xs text-gray-500">
-      {record.workingHours?.toFixed(2) || '0.00'} hrs
-    </span>
-  </div>
-</td>
+                            {(record.payment?.status?.toLowerCase() === 'failed' || record.payment?.status?.toLowerCase() === 'payoutgenerated') && (
+                              <div
+                                className="ml-1 relative tooltip-trigger"
+                                onClick={(e) => handlePending(record.attendanceId, e)}
+                              >
+                                {retryingPayments[record.attendanceId] ? (
+                                  <Loader2 className="h-4 w-4 animate-spin text-blue-600" />
+                                ) : (
+                                  <svg
+                                    xmlns="http://www.w3.org/2000/svg"
+                                    className="h-4 w-4 cursor-pointer text-blue-600 hover:text-blue-800 transition-colors"
+                                    fill="none"
+                                    viewBox="0 0 24 24"
+                                    stroke="currentColor"
+                                  >
+                                    <path
+                                      strokeLinecap="round"
+                                      strokeLinejoin="round"
+                                      strokeWidth={2}
+                                      d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
+                                    />
+                                  </svg>
+                                )}
+                              </div>
+                            )}
+
+                            {/* Show info icon for success and failed payments */}
+                            {(record.payment?.status?.toLowerCase() === 'success' ||
+                              (record.payment?.status?.toLowerCase() === 'failed' && !retryingPayments[record.attendanceId])) && (
+                                <div
+                                  className="ml-1 relative tooltip-trigger"
+                                  onMouseEnter={(e) => {
+                                    if (!isTooltipPinned || activeTooltipId !== record.attendanceId) {
+                                      showTooltip(e, record, false);
+                                    }
+                                  }}
+                                  onMouseLeave={() => {
+                                    hideTooltip();
+                                  }}
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+
+                                    if (activeTooltipId === record.attendanceId && isTooltipPinned) {
+                                      setTooltipVisible(false);
+                                      setTooltipContent(null);
+                                      setActiveTooltipId(null);
+                                      setIsTooltipPinned(false);
+                                    } else {
+                                      showTooltip(e, record, true);
+                                    }
+                                  }}
+                                >
+                                  <svg
+                                    xmlns="http://www.w3.org/2000/svg"
+                                    className={`h-4 w-4 cursor-pointer transition-colors ${activeTooltipId === record.attendanceId && isTooltipPinned
+                                      ? 'text-blue-800'
+                                      : 'text-blue-600 hover:text-blue-800'
+                                      }`}
+                                    fill="none"
+                                    viewBox="0 0 24 24"
+                                    stroke="currentColor"
+                                  >
+                                    <path
+                                      strokeLinecap="round"
+                                      strokeLinejoin="round"
+                                      strokeWidth={2}
+                                      d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+                                    />
+                                  </svg>
+                                </div>
+                              )}
+                          </div>
+
+                          <span className="text-xs text-gray-500">
+                            {record.workingHours?.toFixed(2) || '0.00'} hrs
+                          </span>
+                        </div>
+                      </td>
                     </tr>
                   ))
                 ) : (
                   <tr>
-                    <td colSpan="4" className="text-center p-4 text-gray-500">
+                    <td colSpan="5" className="text-center p-4 text-gray-500">
                       No records found
                     </td>
                   </tr>
@@ -1217,7 +1994,8 @@ const [isTooltipPinned, setIsTooltipPinned] = useState(false);
               ) : (
                 <div className="mb-6">
                   <p className="text-sm text-gray-600 mb-4">
-                    Worker Name: <span className="font-medium">{selectedRecord?.name}</span>
+                    Worker Name:{" "}
+                    <span className="font-medium">{selectedRecord?.name}</span>
                   </p>
 
                   {/* Department Section */}
@@ -1228,30 +2006,38 @@ const [isTooltipPinned, setIsTooltipPinned] = useState(false);
                     <div className="flex gap-2">
                       <div className="relative flex-1">
                         <button
-                          onClick={() => setIsDeptOpen(!isDeptOpen)}
+                          onClick={() => setIsDeptOpen1(!isDeptOpen1)}
                           className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md text-left flex justify-between items-center"
                         >
-                          {selectedDepartment || 'Select Department'}
+                          {selectedDepartment || "Select Department"}
                           <svg
-                            className={`h-4 w-4 transform transition-transform ${isDeptOpen ? 'rotate-180' : ''}`}
+                            className={`h-4 w-4 transform transition-transform ${isDeptOpen1 ? "rotate-180" : ""
+                              }`}
                             xmlns="http://www.w3.org/2000/svg"
                             viewBox="0 0 20 20"
                             fill="currentColor"
                           >
-                            <path fillRule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clipRule="evenodd" />
+                            <path
+                              fillRule="evenodd"
+                              d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z"
+                              clipRule="evenodd"
+                            />
                           </svg>
                         </button>
 
-                        {isDeptOpen && (
+                        {isDeptOpen1 && (
                           <div className="absolute z-10 mt-1 w-full bg-white shadow-lg rounded-md py-1 max-h-48 overflow-auto border border-gray-300">
                             {departments.map((dept, index) => (
                               <button
                                 key={index}
                                 onClick={() => {
                                   setSelectedDepartment(dept);
-                                  setIsDeptOpen(false);
+                                  setIsDeptOpen1(false);
                                 }}
-                                className={`block w-full text-left px-4 py-2 text-sm hover:bg-indigo-100 ${selectedDepartment === dept ? 'bg-indigo-50 text-indigo-700' : 'text-gray-700'}`}
+                                className={`block w-full text-left px-4 py-2 text-sm hover:bg-indigo-100 ${selectedDepartment === dept
+                                  ? "bg-indigo-50 text-indigo-700"
+                                  : "text-gray-700"
+                                  }`}
                               >
                                 {dept}
                               </button>
@@ -1327,7 +2113,10 @@ const [isTooltipPinned, setIsTooltipPinned] = useState(false);
                       onChange={(e) => setBusExit(e.target.checked)}
                       className="h-4 w-4 text-indigo-600 focus:ring-indigo-500 border-gray-300 rounded mt-1"
                     />
-                    <label htmlFor="busExit" className="ml-2 block text-sm text-gray-700">
+                    <label
+                      htmlFor="busExit"
+                      className="ml-2 block text-sm text-gray-700"
+                    >
                       Taken Factorykaam Bus Service
                     </label>
                   </div>
@@ -1340,7 +2129,10 @@ const [isTooltipPinned, setIsTooltipPinned] = useState(false);
                       onChange={(e) => setHaveFood(e.target.checked)}
                       className="h-4 w-4 text-indigo-600 focus:ring-indigo-500 border-gray-300 rounded mt-1"
                     />
-                    <label htmlFor="haveFood" className="ml-2 block text-sm text-gray-700">
+                    <label
+                      htmlFor="haveFood"
+                      className="ml-2 block text-sm text-gray-700"
+                    >
                       Availed Food in Factory
                     </label>
                   </div>
@@ -1356,13 +2148,18 @@ const [isTooltipPinned, setIsTooltipPinned] = useState(false);
 
                   <button
                     onClick={handleExitSubmit}
-                    disabled={loading || !timeInput.hours || !timeInput.minutes || !exitDate}
+                    disabled={
+                      loading ||
+                      !timeInput.hours ||
+                      !timeInput.minutes ||
+                      !exitDate
+                    }
                     className="px-4 py-2 bg-indigo-600 text-white rounded-md hover:bg-indigo-700 disabled:bg-indigo-300 flex items-center justify-center"
                   >
                     {loading ? (
                       <Loader2 className="h-4 w-4 animate-spin" />
                     ) : (
-                      'Mark Exit Time'
+                      "Mark Exit Time"
                     )}
                   </button>
                 </div>
@@ -1371,23 +2168,26 @@ const [isTooltipPinned, setIsTooltipPinned] = useState(false);
           </div>
         )}
 
-        {/* Entry Time Modal */}
+        
         {showEntryModal && (
           <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[1000]">
             <div className="bg-white rounded-lg p-6 max-w-md w-full mx-4">
               <div className="flex items-center justify-between mb-4">
-                <h3 className="text-lg font-semibold">Mark Entry Time</h3>
+                <h3 className="text-lg font-semibold">
+                  {selectedRecord ? "Modify Entry Time" : "Mark Entry Time"}
+                </h3>
                 <X
                   className="h-5 w-5 cursor-pointer text-gray-500 hover:text-gray-700"
                   onClick={() => {
                     setShowEntryModal(false);
                     setBusEntry(false);
                     setWorkerDetails(null);
-                    setPhoneInput('');
-                    setPhoneError('');
-                    setWorkerError('');
-                    setEntryDate('');
-                    setEntryTimeInput({ hours: '', minutes: '', period: 'AM' });
+                    setSelectedRecord(null); // Reset selected record
+                    setPhoneInput("");
+                    setPhoneError("");
+                    setWorkerError("");
+                    setEntryDate("");
+                    setEntryTimeInput({ hours: "", minutes: "", period: "AM" });
                   }}
                 />
               </div>
@@ -1396,7 +2196,131 @@ const [isTooltipPinned, setIsTooltipPinned] = useState(false);
                 <div className="flex justify-center items-center py-8">
                   <Loader2 className="h-8 w-8 animate-spin" />
                 </div>
+              ) : selectedRecord ? (
+                // EDIT MODE - Show pre-filled data from selectedRecord
+                <div className="mb-6">
+                  <div className="mb-4">
+                    <p className="text-sm text-gray-600">
+                      Worker Name:{" "}
+                      <span className="font-medium">{selectedRecord.name}</span>
+                    </p>
+                    <p className="text-sm text-gray-600">
+                      Phone:{" "}
+                      <span className="font-medium">
+                        {selectedRecord.phone}
+                      </span>
+                    </p>
+                    <p className="text-sm text-gray-600">
+                      Department:{" "}
+                      <span className="font-medium">
+                        {selectedRecord.department}
+                      </span>
+                    </p>
+                  </div>
+
+                  <div className="mb-4">
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Entry Date
+                    </label>
+                    <input
+                      type="date"
+                      value={entryDate}
+                      onChange={handleEntryDateChange}
+                      className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md"
+                      // Calculate yesterday from the original entry date
+                      min={(() => {
+                        const originalDate = new Date(selectedRecord.entryDate);
+                        const yesterday = new Date(originalDate);
+                        yesterday.setDate(yesterday.getDate() - 1);
+                        return yesterday.toISOString().split('T')[0];
+                      })()}
+                      // Use the original entry date as maximum
+                      max={new Date(selectedRecord.entryDate).toISOString().split('T')[0]}
+                    />
+                  </div>
+
+                  <div className="mb-4">
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Entry Time
+                    </label>
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="number"
+                        name="hours"
+                        value={entryTimeInput.hours}
+                        onChange={handleEntryTimeChange}
+                        placeholder="HH"
+                        min="1"
+                        max="12"
+                        className="w-16 px-3 py-2 border border-gray-300 rounded-md text-center"
+                      />
+                      <span>:</span>
+                      <input
+                        type="number"
+                        name="minutes"
+                        value={entryTimeInput.minutes}
+                        onChange={handleEntryTimeChange}
+                        placeholder="MM"
+                        min="0"
+                        max="59"
+                        className="w-16 px-3 py-2 border border-gray-300 rounded-md text-center"
+                      />
+                      <select
+                        name="period"
+                        value={entryTimeInput.period}
+                        onChange={handleEntryTimeChange}
+                        className="w-20 px-2 py-2 border border-gray-300 rounded-md"
+                      >
+                        <option value="AM">AM</option>
+                        <option value="PM">PM</option>
+                      </select>
+                    </div>
+                  </div>
+
+                  <div className="flex items-start mb-4">
+                    <input
+                      type="checkbox"
+                      id="busEntry"
+                      checked={busEntry}
+                      onChange={(e) => setBusEntry(e.target.checked)}
+                      className="h-4 w-4 text-indigo-600 focus:ring-indigo-500 border-gray-300 rounded mt-1"
+                    />
+                    <label
+                      htmlFor="busEntry"
+                      className="ml-2 block text-sm text-gray-700"
+                    >
+                      Taken Factorykaam Bus Service
+                    </label>
+                  </div>
+
+                  {entryTimeError && (
+                    <div className="bg-red-50 border border-red-200 text-red-700 px-3 py-2 rounded-md mb-4">
+                      <div className="flex items-center">
+                        <AlertCircle className="h-4 w-4 mr-2 flex-shrink-0" />
+                        <span className="text-sm">{entryTimeError}</span>
+                      </div>
+                    </div>
+                  )}
+
+                  <button
+                    onClick={handleEntryUpdate}
+                    disabled={
+                      loading ||
+                      !entryTimeInput.hours ||
+                      !entryTimeInput.minutes ||
+                      !entryDate
+                    }
+                    className="px-4 py-2 bg-indigo-600 text-white rounded-md hover:bg-indigo-700 disabled:bg-indigo-300 flex items-center justify-center"
+                  >
+                    {loading ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      "Update Entry Time"
+                    )}
+                  </button>
+                </div>
               ) : (
+                // CREATE MODE - Original phone input flow
                 <div className="mb-6">
                   <div className="mb-4">
                     <label className="block text-sm font-medium text-gray-700 mb-1">
@@ -1411,8 +2335,8 @@ const [isTooltipPinned, setIsTooltipPinned] = useState(false);
                             const value = e.target.value;
                             if (/^\d{0,10}$/.test(value)) {
                               setPhoneInput(value);
-                              setPhoneError('');
-                              setWorkerError('');
+                              setPhoneError("");
+                              setWorkerError("");
                             }
                           }}
                           placeholder="Enter worker phone number"
@@ -1429,10 +2353,14 @@ const [isTooltipPinned, setIsTooltipPinned] = useState(false);
                         </button>
                       </div>
                       {phoneError && (
-                        <div className="text-red-500 text-sm mt-1">{phoneError}</div>
+                        <div className="text-red-500 text-sm mt-1">
+                          {phoneError}
+                        </div>
                       )}
                       {workerError && (
-                        <div className="text-red-500 text-sm mt-1">{workerError}</div>
+                        <div className="text-red-500 text-sm mt-1">
+                          {workerError}
+                        </div>
                       )}
                     </div>
                   </div>
@@ -1441,10 +2369,16 @@ const [isTooltipPinned, setIsTooltipPinned] = useState(false);
                     <>
                       <div className="mb-4">
                         <p className="text-sm text-gray-600">
-                          Worker Name: <span className="font-medium">{workerDetails.name}</span>
+                          Worker Name:{" "}
+                          <span className="font-medium">
+                            {workerDetails.name}
+                          </span>
                         </p>
                         <p className="text-sm text-gray-600">
-                          Department: <span className="font-medium">{workerDetails.department}</span>
+                          Department:{" "}
+                          <span className="font-medium">
+                            {workerDetails.department}
+                          </span>
                         </p>
                       </div>
 
@@ -1508,7 +2442,10 @@ const [isTooltipPinned, setIsTooltipPinned] = useState(false);
                           onChange={(e) => setBusEntry(e.target.checked)}
                           className="h-4 w-4 text-indigo-600 focus:ring-indigo-500 border-gray-300 rounded mt-1"
                         />
-                        <label htmlFor="busEntry" className="ml-2 block text-sm text-gray-700">
+                        <label
+                          htmlFor="busEntry"
+                          className="ml-2 block text-sm text-gray-700"
+                        >
                           Taken Factorykaam Bus Service
                         </label>
                       </div>
@@ -1524,13 +2461,18 @@ const [isTooltipPinned, setIsTooltipPinned] = useState(false);
 
                       <button
                         onClick={handleEntrySubmit}
-                        disabled={loading || !entryTimeInput.hours || !entryTimeInput.minutes || !entryDate}
+                        disabled={
+                          loading ||
+                          !entryTimeInput.hours ||
+                          !entryTimeInput.minutes ||
+                          !entryDate
+                        }
                         className="px-4 py-2 bg-indigo-600 text-white rounded-md hover:bg-indigo-700 disabled:bg-indigo-300 flex items-center justify-center"
                       >
                         {loading ? (
                           <Loader2 className="h-4 w-4 animate-spin" />
                         ) : (
-                          'Mark Entry Time'
+                          "Mark Entry Time"
                         )}
                       </button>
                     </>
@@ -1540,6 +2482,36 @@ const [isTooltipPinned, setIsTooltipPinned] = useState(false);
             </div>
           </div>
         )}
+
+        {showConfirmationModal && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[1000]">
+            <div className="bg-white rounded-lg p-6 max-w-sm w-full mx-4">
+              <div className="flex flex-col items-center text-center">
+                <AlertCircle className="h-12 w-12 text-yellow-500 mb-4" />
+                <h3 className="text-lg font-semibold mb-2">Confirm Update</h3>
+                <p className="text-gray-600 mb-6">
+                  Are you sure you want to update the status of this payment to pending?
+                </p>
+                <div className="flex gap-4">
+                  <button
+                    onClick={cancelPendingUpdate}
+                    className="px-4 py-2 bg-gray-300 text-gray-700 rounded-md hover:bg-gray-400"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={confirmPendingUpdate}
+                    className="px-4 py-2 bg-indigo-600 text-white rounded-md hover:bg-indigo-700"
+                  >
+                    Confirm
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+
 
         {/* Success Modal */}
         {showSuccessModal && (
@@ -1581,31 +2553,29 @@ const [isTooltipPinned, setIsTooltipPinned] = useState(false);
       </div>
 
       {tooltipVisible && tooltipContent && (
-  <div
-    className={`fixed z-[9999]  mr-4 p-3 text-xs bg-white shadow-xl rounded-lg border border-gray-200  max-w-[170px] transition-opacity duration-200 ${
-      isTooltipPinned ? 'pointer-events-auto' : 'pointer-events-none'
-    }`}
-    style={{
-      left: tooltipPosition.x,
-      top: tooltipPosition.y,
-      transform: 'translate(-50%, -100%)'
-    }}
-  >
-    <div className="break-words">
-      <strong className="text-gray-800">Reference ID :</strong>
-      <span className="text-gray-600 ml-1">{tooltipContent.referenceId}</span>
-    </div>
-    <div className="break-words mt-2">
-      <strong className="text-gray-800">Remarks :</strong>
-      <span className="text-gray-600 ml-1">{tooltipContent.remarks}</span>
-    </div>
-  
-    <div className="absolute top-full left-1/2 transform -translate-x-1/2 border-4 border-transparent border-t-white"></div>
-    <div className="absolute top-full left-1/2 transform -translate-x-1/2 border-4 border-transparent border-t-gray-200 mt-[-1px]"></div>
-  </div>
-)}
+        <div
+          className={`fixed z-[9999]  mr-4 p-3 text-xs bg-white shadow-xl rounded-lg border border-gray-200  max-w-[170px] transition-opacity duration-200 ${isTooltipPinned ? 'pointer-events-auto' : 'pointer-events-none'
+            }`}
+          style={{
+            left: tooltipPosition.x,
+            top: tooltipPosition.y,
+            transform: 'translate(-50%, -100%)'
+          }}
+        >
+          <div className="break-words">
+            <strong className="text-gray-800">Reference ID :</strong>
+            <span className="text-gray-600 ml-1">{tooltipContent.referenceId}</span>
+          </div>
+          <div className="break-words mt-2">
+            <strong className="text-gray-800">Remarks :</strong>
+            <span className="text-gray-600 ml-1">{tooltipContent.remarks}</span>
+          </div>
+
+          <div className="absolute top-full left-1/2 transform -translate-x-1/2 border-4 border-transparent border-t-white"></div>
+          <div className="absolute top-full left-1/2 transform -translate-x-1/2 border-4 border-transparent border-t-gray-200 mt-[-1px]"></div>
+        </div>
+      )}
     </div>
   );
 };
-
 export default ViewAttendance;
